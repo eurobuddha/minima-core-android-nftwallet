@@ -4,6 +4,8 @@
 
     <!-- Token icon graphics may live at remote/IPFS URLs -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- QR scan of recipient addresses (zxing-embedded CaptureActivity) -->
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- Android 11+ package visibility: needed to launch the node app and to deliver
          our targeted (setPackage) IPC broadcasts to it -->

@@ -54,7 +54,37 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Get address"
+            android:text="Next address"
             style="?attr/materialButtonOutlinedStyle" />
+
+        <!-- Address safety report (checkaddress on our own address) -->
+        <TextView
+            android:id="@+id/rcvSafety"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:padding="10dp"
+            android:textSize="12sp"
+            android:gravity="center"
+            android:visibility="gone" />
+
+        <!-- All wallet addresses; tap one to show it in the QR above -->
+        <TextView
+            android:id="@+id/rcvListLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="YOUR ADDRESSES  ·  TAP TO SHOW"
+            android:textColor="@color/ux_subtext"
+            android:textSize="11sp"
+            android:letterSpacing="0.1"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/rcvList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="vertical" />
     </LinearLayout>
 </ScrollView>

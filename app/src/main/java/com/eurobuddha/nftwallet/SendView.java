@@ -18,23 +18,35 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Send tab — full UTXO transaction construction, mirroring the dapp's Send + Confirm flow:
- * FROM (the selected input coins), recipient, amount (+ max), an editable change address (+ next,
- * pre-filled by rotating the node's default addresses), and an optional burn (Minima only). Preview
- * opens a Confirm breakdown (Inputs / Outputs / Change / Burn) before signing & posting.
+ * Send tab — two modes behind one form, like the old Wallet's send suite:
+ *
+ *  QUICK SEND    — pick a token, recipient, amount (+ max), optional burn and split:N; the node
+ *                  chooses the input coins ({@code send} command). This is the 2.47.2-era flow.
+ *  COIN CONTROL  — full UTXO transaction construction from the coins selected on the Coins tab:
+ *                  FROM list, editable change address (+ next), burn; manual txn build/sign/post.
+ *
+ * Both modes share recipient/amount/burn fields, validation notes, the QR scan button, and the
+ * Confirm-breakdown dialog before anything is signed or posted.
  */
 public class SendView extends BaseView {
 
     private final LinearLayout fromList;
-    private final EditText addrInput, amountInput, changeInput, burnInput;
-    private final TextView addrNote, amountNote, changeNote, burnNote, statusView;
+    private final EditText addrInput, amountInput, changeInput, burnInput, splitInput;
+    private final TextView addrNote, amountNote, changeNote, burnNote, splitNote, statusView;
     private final Button previewBtn;
+    private final TextView modeQuick, modeCoins, tokenLabel, tokenBal;
+    private final View tokenBlock, fromBlock, splitBlock, changeBlock;
+
+    /** true = QUICK SEND (token-level, node picks coins); false = COIN CONTROL (manual txn). */
+    private boolean quickMode = true;
+    /** Quick-mode selected token (tokenid); defaults to Minima. */
+    private String quickTokenid = Util.MINIMA_TOKENID;
 
     private boolean changeTouched = false;     // user edited the change field
     private boolean settingChange = false;     // guard for programmatic change-field writes
     private boolean changeFetching = false;
 
-    /** Binds the form fields, wires Max/Next/Preview, and tracks manual edits to the change field. */
+    /** Binds the form fields, wires Max/Next/Preview/Scan and the mode segment. */
     public SendView(MainActivity a) {
         super(a, R.layout.view_send);
         fromList = find(R.id.sendFromList);
@@ -42,16 +54,32 @@ public class SendView extends BaseView {
         amountInput = find(R.id.sendAmount);
         changeInput = find(R.id.sendChange);
         burnInput = find(R.id.sendBurn);
+        splitInput = find(R.id.sendSplit);
         addrNote = find(R.id.sendAddrNote);
         amountNote = find(R.id.sendAmountNote);
         changeNote = find(R.id.sendChangeNote);
         burnNote = find(R.id.sendBurnNote);
+        splitNote = find(R.id.sendSplitNote);
         statusView = find(R.id.sendStatus);
         previewBtn = find(R.id.previewBtn);
+        modeQuick = find(R.id.modeQuickBtn);
+        modeCoins = find(R.id.modeCoinsBtn);
+        tokenLabel = find(R.id.sendTokenLabel);
+        tokenBal = find(R.id.sendTokenBal);
+        tokenBlock = find(R.id.sendTokenBlock);
+        fromBlock = find(R.id.sendFromBlock);
+        splitBlock = find(R.id.sendSplitBlock);
+        changeBlock = find(R.id.sendChangeBlock);
 
         ((TextView) find(R.id.maxBtn)).setOnClickListener(v -> onMax());
         ((TextView) find(R.id.nextBtn)).setOnClickListener(v -> fetchChange(true));
+        ((TextView) find(R.id.scanBtn)).setOnClickListener(v -> act.scanQr(text -> {
+            if (text != null && !text.isEmpty()) addrInput.setText(text.trim());
+        }));
         previewBtn.setOnClickListener(v -> onPreview());
+        modeQuick.setOnClickListener(v -> setMode(true));
+        modeCoins.setOnClickListener(v -> setMode(false));
+        find(R.id.sendTokenRow).setOnClickListener(v -> showTokenPicker());
 
         // Mark the change field "touched" once the user types, so we stop auto-prefilling it.
         changeInput.addTextChangedListener(new TextWatcher() {
@@ -67,23 +95,73 @@ public class SendView extends BaseView {
     private void applyDesign() {
         root.setBackgroundColor(Design.bg());
         fromList.setBackgroundColor(Design.surface());
-        for (EditText e : new EditText[]{addrInput, amountInput, changeInput, burnInput}) {
+        for (EditText e : new EditText[]{addrInput, amountInput, changeInput, burnInput, splitInput}) {
             e.setBackgroundColor(Design.surface2());
             e.setTextColor(Design.text());
         }
+        find(R.id.sendTokenRow).setBackgroundColor(Design.surface2());
+        tokenLabel.setTextColor(Design.text());
+        tokenBal.setTextColor(Design.dim());
         previewBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Design.accent()));
         previewBtn.setTextColor(Design.onAccent());
+        paintModeSegment();
     }
 
-    /** Rebuilds the FROM (selected-input) list and total, gates burn to Minima, and prefills change. */
+    private void paintModeSegment() {
+        modeQuick.setTextColor(quickMode ? Design.onAccent() : Design.dim());
+        modeQuick.setBackgroundColor(quickMode ? Design.accent() : Design.surface2());
+        modeCoins.setTextColor(!quickMode ? Design.onAccent() : Design.dim());
+        modeCoins.setBackgroundColor(!quickMode ? Design.accent() : Design.surface2());
+    }
+
+    private void setMode(boolean quick) {
+        quickMode = quick;
+        paintModeSegment();
+        refresh();
+    }
+
+    /** Balances detail "Send" jumps here with the token preselected in quick mode. */
+    public void preselectToken(String tokenid) {
+        quickTokenid = (tokenid == null || tokenid.isEmpty()) ? Util.MINIMA_TOKENID : tokenid;
+        setMode(true);
+    }
+
+    /** Rebuilds the mode-dependent blocks; gates burn; prefills change (expert mode). */
     @Override
     public void refresh() {
+        tokenBlock.setVisibility(quickMode ? View.VISIBLE : View.GONE);
+        splitBlock.setVisibility(quickMode ? View.VISIBLE : View.GONE);
+        fromBlock.setVisibility(quickMode ? View.GONE : View.VISIBLE);
+        changeBlock.setVisibility(quickMode ? View.GONE : View.VISIBLE);
+
+        if (quickMode) {
+            TokenBalance b = quickToken();
+            if (b == null && !Util.isMinima(quickTokenid)) {
+                // token vanished from balances (e.g. fully sent) — fall back to Minima
+                quickTokenid = Util.MINIMA_TOKENID;
+                b = quickToken();
+            }
+            String name = b == null ? "Minima" : displayName(b);
+            tokenLabel.setText(name);
+            tokenBal.setText(b == null ? "" : Util.tidyAmount(b.sendable));
+            boolean minima = Util.isMinima(quickTokenid);
+            burnInput.setEnabled(true);   // burn rides alongside any send in quick mode
+            burnNote.setVisibility(View.GONE);
+            previewBtn.setEnabled(true);
+            if (!minima && b != null && b.isNft()) {
+                setNote(splitNote, "NFTs are indivisible — split does not apply.", R.color.ux_subtext);
+            } else {
+                splitNote.setVisibility(View.GONE);
+            }
+            return;
+        }
+
         List<Coin> sel = act.selectedCoins();
         fromList.removeAllViews();
 
         if (sel.isEmpty()) {
             TextView t = new TextView(act);
-            t.setText("Select coins in the Wallet tab, then come here to send.");
+            t.setText("Select coins in the Coins tab, then come here to send.");
             t.setTextColor(Design.dim());
             t.setTextSize(13f);
             fromList.addView(t);
@@ -104,7 +182,7 @@ public class SendView extends BaseView {
         View totalRow = row("Total in", Util.tidyAmount(total.toPlainString()) + " " + tokenName, true);
         fromList.addView(totalRow);
 
-        // Burn is paid in Minima, so it's only offered when sending the Minima token.
+        // In expert mode burn is spent from the selected Minima coins, so it needs a Minima selection.
         burnInput.setEnabled(minima);
         if (!minima) {
             burnInput.setText("");
@@ -116,10 +194,11 @@ public class SendView extends BaseView {
         prefillChangeIfNeeded();
     }
 
-    /** Snapshot the typed fields (recipient, amount, change, burn) — used to survive a theme recreate(). */
+    /** Snapshot the typed fields — used to survive a theme recreate(). */
     public String[] fieldValues() {
         return new String[]{ addrInput.getText().toString(), amountInput.getText().toString(),
-                changeInput.getText().toString(), burnInput.getText().toString() };
+                changeInput.getText().toString(), burnInput.getText().toString(),
+                splitInput.getText().toString(), quickMode ? "q" : "c", quickTokenid };
     }
 
     /** Restore a fieldValues() snapshot after recreate(). */
@@ -127,16 +206,82 @@ public class SendView extends BaseView {
         if (v == null || v.length < 4) return;
         addrInput.setText(v[0]); amountInput.setText(v[1]);
         changeInput.setText(v[2]); burnInput.setText(v[3]);
+        if (v.length >= 7) {
+            splitInput.setText(v[4]);
+            quickMode = !"c".equals(v[5]);
+            quickTokenid = v[6] == null || v[6].isEmpty() ? Util.MINIMA_TOKENID : v[6];
+            paintModeSegment();
+        }
+    }
+
+    // ----- quick mode: token picker -----
+
+    private TokenBalance quickToken() {
+        for (TokenBalance b : act.balances()) if (b.tokenid.equals(quickTokenid)) return b;
+        return null;
+    }
+
+    private String displayName(TokenBalance b) {
+        String n = b.name == null || b.name.isEmpty() ? "Token" : b.name;
+        if (b.meta != null && b.meta.ticker != null && !b.meta.ticker.isEmpty()
+                && !b.meta.ticker.equalsIgnoreCase(n)) n = n + "  ·  " + b.meta.ticker.toUpperCase();
+        return n;
+    }
+
+    /** Theme-styled token chooser listing every balance with its sendable amount. */
+    private void showTokenPicker() {
+        final List<TokenBalance> all = new ArrayList<>(act.balances());
+        if (all.isEmpty()) { status("No balances loaded yet.", false); return; }
+        LinearLayout box = new LinearLayout(act);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setBackgroundColor(Design.bg());
+        box.setPadding(dp(8), dp(8), dp(8), dp(8));
+        ScrollView sv = new ScrollView(act);
+        sv.addView(box);
+        final AlertDialog dlg = new AlertDialog.Builder(act).setTitle("Send which token?").setView(sv).create();
+        for (final TokenBalance b : all) {
+            LinearLayout r = new LinearLayout(act);
+            r.setOrientation(LinearLayout.HORIZONTAL);
+            r.setGravity(Gravity.CENTER_VERTICAL);
+            r.setPadding(dp(12), dp(12), dp(12), dp(12));
+            TextView n = new TextView(act);
+            n.setText(displayName(b));
+            n.setTextColor(Design.text()); n.setTextSize(14f); n.setTypeface(Design.typefaceBold());
+            TextView amt = new TextView(act);
+            amt.setText(Util.tidyAmount(b.sendable));
+            amt.setTextColor(Design.dim()); amt.setTextSize(13f);
+            amt.setTypeface(android.graphics.Typeface.MONOSPACE);
+            amt.setGravity(Gravity.END);
+            r.addView(n, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            r.addView(amt);
+            r.setOnClickListener(v -> {
+                quickTokenid = b.tokenid;
+                dlg.dismiss();
+                refresh();
+            });
+            box.addView(r);
+        }
+        dlg.show();
     }
 
     // ----- field helpers -----
 
-    /** Fills the amount with the full spendable total; for Minima sends the burn is reserved first. */
+    /** Fills the amount with the full spendable total; for Minima the burn is reserved first. */
     private void onMax() {
+        BigDecimal burn = parseBurn();
+        if (quickMode) {
+            TokenBalance b = quickToken();
+            if (b == null) return;
+            BigDecimal total;
+            try { total = new BigDecimal(b.sendable); } catch (Exception e) { return; }
+            BigDecimal max = Util.isMinima(quickTokenid) && burn.signum() > 0 ? total.subtract(burn) : total;
+            if (max.signum() < 0) max = BigDecimal.ZERO;
+            amountInput.setText(Util.tidyAmount(max.toPlainString()));
+            return;
+        }
         List<Coin> sel = act.selectedCoins();
         if (sel.isEmpty()) return;
         BigDecimal total = sum(sel);
-        BigDecimal burn = parseBurn();
         // Minima: max = total − burn (burn is spent from the same coins); other tokens: whole total.
         BigDecimal max = Util.isMinima(act.selectedTokenid()) ? total.subtract(burn) : total;
         if (max.signum() < 0) max = BigDecimal.ZERO;
@@ -176,10 +321,12 @@ public class SendView extends BaseView {
 
     // ----- preview / validate -----
 
-    /** Validates every field, computes change, then asks the node to confirm the recipient before Confirm. */
+    /** Validates every field, then asks the node to confirm the recipient before Confirm. */
     private void onPreview() {
+        if (quickMode) { onPreviewQuick(); return; }
+
         final List<Coin> sel = act.selectedCoins();
-        if (sel.isEmpty()) { status("Select coins in the Wallet tab first.", false); return; }
+        if (sel.isEmpty()) { status("Select coins in the Coins tab first.", false); return; }
 
         final String recipient = addrInput.getText().toString().trim();
         if (recipient.isEmpty()) { setNote(addrNote, "Enter a recipient address.", R.color.ux_error); return; }
@@ -243,7 +390,133 @@ public class SendView extends BaseView {
         });
     }
 
-    // ----- confirm breakdown -----
+    /** Quick-mode validation → checkaddress → Confirm dialog → node `send`. */
+    private void onPreviewQuick() {
+        final TokenBalance tok = quickToken();
+        final boolean minima = Util.isMinima(quickTokenid);
+        if (tok == null && !minima) { status("Pick a token first.", false); return; }
+
+        final String recipient = addrInput.getText().toString().trim();
+        if (recipient.isEmpty()) { setNote(addrNote, "Enter a recipient address.", R.color.ux_error); return; }
+        if (!Util.isValidAddress(recipient)) { setNote(addrNote, "Invalid address format.", R.color.ux_error); return; }
+        addrNote.setVisibility(View.GONE);
+
+        final BigDecimal burn = parseBurn();
+        if (burn.signum() < 0) { setNote(burnNote, "Invalid burn amount.", R.color.ux_error); return; }
+        burnNote.setVisibility(View.GONE);
+
+        final BigDecimal amount;
+        try { amount = new BigDecimal(amountInput.getText().toString().trim()); }
+        catch (Exception e) { setNote(amountNote, "Enter a valid amount.", R.color.ux_error); return; }
+        if (amount.signum() <= 0) { setNote(amountNote, "Amount must be greater than zero.", R.color.ux_error); return; }
+        BigDecimal sendable = BigDecimal.ZERO;
+        try { if (tok != null) sendable = new BigDecimal(tok.sendable); } catch (Exception ignored) {}
+        if (tok != null && amount.compareTo(sendable) > 0) {
+            setNote(amountNote, "Max sendable is " + Util.tidyAmount(tok.sendable) + ".", R.color.ux_error); return;
+        }
+        int dec = act.tokenDecimals(quickTokenid);
+        if (dec >= 0 && Util.decimalPlaces(amount) > dec) { setNote(amountNote, "This token supports at most " + dec + " decimals.", R.color.ux_error); return; }
+        amountNote.setVisibility(View.GONE);
+
+        final int split = parseSplit();
+        if (split < 1 || split > 20) { setNote(splitNote, "Split must be between 1 and 20.", R.color.ux_error); return; }
+        splitNote.setVisibility(View.GONE);
+
+        final String tokenName = tok == null ? "Minima" : tok.name;
+        final String amountStr = amount.stripTrailingZeros().toPlainString();
+        final String burnStr = burn.signum() > 0 ? burn.stripTrailingZeros().toPlainString() : null;
+
+        previewBtn.setEnabled(false);
+        status("Checking address…", true);
+        act.node().cmd("checkaddress address:" + recipient, new NodeApi.Cb() {
+            @Override public void onResult(JSONObject json) {
+                previewBtn.setEnabled(true);
+                statusView.setVisibility(View.GONE);
+                if (!json.optBoolean("status", false)) {
+                    setNote(addrNote, "That isn't a valid Minima address.", R.color.ux_error);
+                    return;
+                }
+                showQuickConfirm(recipient, amountStr, burnStr, split, tokenName);
+            }
+            @Override public void onError(String message) {
+                previewBtn.setEnabled(true);
+                setNote(addrNote, NodeApi.ERR_NOT_ENABLED.equals(message)
+                        ? "Enable this wallet in Minima Core → Apps first." : "Could not validate address.", R.color.ux_error);
+                statusView.setVisibility(View.GONE);
+            }
+        });
+    }
+
+    /** Quick-mode confirm: recipient / amount / burn / split breakdown before the node send. */
+    private void showQuickConfirm(final String recipient, final String amountStr,
+                                  final String burnStr, final int split, final String tokenName) {
+        LinearLayout body = new LinearLayout(act);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setBackgroundColor(Design.bg());
+        int pad = dp(18);
+        body.setPadding(pad, dp(8), pad, 0);
+
+        body.addView(sectionLabel("SEND"));
+        body.addView(row("Token", tokenName, true));
+        body.addView(row("→ " + Util.shorten(recipient) + (isMine(recipient) ? "  (yours)" : ""),
+                Util.tidyAmount(amountStr) + " " + tokenName, false));
+        if (burnStr != null) body.addView(row("🔥 burn", Util.tidyAmount(burnStr) + " MINIMA", false));
+        if (split > 1) body.addView(row("Split", split + " equal coins", false));
+        body.addView(row("Coins", "chosen by the node", false));
+
+        TextView warn = new TextView(act);
+        warn.setText("Once posted, this cannot be undone. Verify the recipient address before continuing.");
+        warn.setTextColor(Design.red());
+        warn.setTextSize(12f);
+        warn.setPadding(0, dp(14), 0, 0);
+        body.addView(warn);
+
+        ScrollView sv = new ScrollView(act);
+        sv.addView(body);
+
+        new AlertDialog.Builder(act)
+                .setTitle("Confirm transaction")
+                .setView(sv)
+                .setNegativeButton("Back", null)
+                .setPositiveButton("Send →", (d, w) -> runQuickSend(recipient, amountStr, burnStr, split, tokenName))
+                .show();
+    }
+
+    /** Posts the node-level `send` and reports the outcome. */
+    private void runQuickSend(final String recipient, final String amountStr,
+                              final String burnStr, final int split, final String tokenName) {
+        previewBtn.setEnabled(false);
+        status("Sending…", true);
+        StringBuilder cmd = new StringBuilder("send address:").append(recipient)
+                .append(" amount:").append(amountStr)
+                .append(" tokenid:").append(quickTokenid);
+        if (burnStr != null) cmd.append(" burn:").append(burnStr);
+        if (split > 1) cmd.append(" split:").append(split);
+        act.node().cmd(cmd.toString(), new NodeApi.Cb() {
+            @Override public void onResult(JSONObject json) {
+                previewBtn.setEnabled(true);
+                if (json.optBoolean("status", false)) {
+                    status("✓ Sent — " + Util.tidyAmount(amountStr) + " " + tokenName + " to "
+                            + Util.shorten(recipient) + ".", true);
+                    addrInput.setText("");
+                    amountInput.setText("");
+                    burnInput.setText("");
+                    splitInput.setText("");
+                    act.reload();
+                } else {
+                    String err = json.optString("error", json.optString("message", "Send failed."));
+                    status("Failed: " + err, false);
+                }
+            }
+            @Override public void onError(String message) {
+                previewBtn.setEnabled(true);
+                if (NodeApi.ERR_NOT_ENABLED.equals(message)) message = "Enable this wallet in Minima Core → Apps first.";
+                status("Failed: " + message, false);
+            }
+        });
+    }
+
+    // ----- expert confirm breakdown -----
 
     /** The Confirm step: a read-only Inputs / Outputs / Change / Burn breakdown before signing. */
     private void showConfirm(final List<Coin> sel, final String recipient, final String amountStr,
@@ -388,6 +661,13 @@ public class SendView extends BaseView {
         String s = burnInput.getText().toString().trim();
         if (s.isEmpty()) return BigDecimal.ZERO;
         try { return new BigDecimal(s); } catch (Exception e) { return new BigDecimal("-1"); }
+    }
+
+    /** Parses the split field: empty = 1; unparseable = -1 (rejected). */
+    private int parseSplit() {
+        String s = splitInput.getText().toString().trim();
+        if (s.isEmpty()) return 1;
+        try { return Integer.parseInt(s); } catch (Exception e) { return -1; }
     }
 
     /** Shows an inline validation note under a field in the given color. */

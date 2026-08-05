@@ -59,6 +59,10 @@ public class MainActivity extends AppCompatActivity {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Runnable reloadTask = this::reload;
 
+    // ----- QR scan (zxing-embedded). Registered in onCreate; one consumer at a time. -----
+    private androidx.activity.result.ActivityResultLauncher<com.journeyapps.barcodescanner.ScanOptions> scanLauncher;
+    private java.util.function.Consumer<String> scanConsumer;
+
     // ----- wallet state -----
     private final List<Coin> coins = new ArrayList<>();
     private final Set<String> sendableIds = new HashSet<>();
@@ -105,6 +109,14 @@ public class MainActivity extends AppCompatActivity {
         });
 
         historyDb = new HistoryDb(this);
+
+        // QR scanner: must register before RESUMED. The library's CaptureActivity handles the
+        // runtime CAMERA permission prompt itself.
+        scanLauncher = registerForActivityResult(new com.journeyapps.barcodescanner.ScanContract(), result -> {
+            java.util.function.Consumer<String> consumer = scanConsumer;
+            scanConsumer = null;
+            if (consumer != null && result.getContents() != null) consumer.accept(result.getContents());
+        });
 
         pairingBanner = findViewById(R.id.pairingBanner);
         blockNo = findViewById(R.id.blockNo);
@@ -470,6 +482,27 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public int chainBlock() { return chainBlock; }
+
+    /** Launch the QR scanner; the consumer gets the decoded text (or is dropped on cancel). */
+    public void scanQr(java.util.function.Consumer<String> consumer) {
+        scanConsumer = consumer;
+        com.journeyapps.barcodescanner.ScanOptions opts = new com.journeyapps.barcodescanner.ScanOptions();
+        opts.setDesiredBarcodeFormats(com.journeyapps.barcodescanner.ScanOptions.QR_CODE);
+        opts.setPrompt("Scan a Minima address QR");
+        opts.setBeepEnabled(false);
+        opts.setOrientationLocked(true);
+        try { scanLauncher.launch(opts); }
+        catch (Exception e) {
+            scanConsumer = null;
+            Toast.makeText(this, "Could not open the camera.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** Jump to the Send tab with a token preselected in quick mode (Balances → Send). */
+    public void sendToken(String tokenid) {
+        ((SendView) views[TAB_SEND]).preselectToken(tokenid);
+        goToTab(TAB_SEND);
+    }
 
     /** The currently visible tab index (ViewPager page). */
     public int currentTab() { return viewPager.getCurrentItem(); }

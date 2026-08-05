@@ -1,12 +1,12 @@
 package com.eurobuddha.nftwallet;
 
-import android.content.ClipData;
-import android.content.ClipboardManager;
-import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.view.Gravity;
+import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -16,20 +16,32 @@ import com.google.zxing.qrcode.QRCodeWriter;
 
 import org.json.JSONObject;
 
-/** Receive tab: shows the node's default address with a QR code. */
+/**
+ * Receive tab — the old-wallet receive experience: a QR (tap to copy), the Mx address with its
+ * 0x form, a live {@code checkaddress} safety report ("belongs to this node / safe to use"),
+ * NEXT-address rotation, and the full default-address pool with tap-to-show.
+ */
 public class ReceiveView extends BaseView {
 
-    private final TextView address;
+    private final TextView address, safety, listLabel;
     private final ImageView qr;
+    private final LinearLayout list;
 
-    /** Wires Copy/Refresh buttons, themes the view, and renders any cached address. */
+    /** The address currently displayed in the QR (Mx form). */
+    private String shownAddr = "";
+
     public ReceiveView(MainActivity a) {
         super(a, R.layout.view_receive);
         address = find(R.id.rcvAddress);
         qr = find(R.id.rcvQr);
+        safety = find(R.id.rcvSafety);
+        listLabel = find(R.id.rcvListLabel);
+        list = find(R.id.rcvList);
 
-        android.widget.Button copy = find(R.id.rcvCopy);
+        Button copy = find(R.id.rcvCopy);
         copy.setOnClickListener(v -> copyAddress());
+        qr.setOnClickListener(v -> copyAddress());          // tap QR to copy, like the old wallet
+        address.setOnClickListener(v -> copyAddress());
         Button refreshBtn = find(R.id.rcvRefresh);
         refreshBtn.setOnClickListener(v -> fetchFresh());
         refreshBtn.setTextColor(Design.accent());
@@ -41,36 +53,36 @@ public class ReceiveView extends BaseView {
         refresh();
     }
 
-    /** Repaints from the cached default address; never hits the node (onShown does the fetch). */
+    /** Repaints from the cached address + address pool; never hits the node (onShown fetches). */
     @Override
     public void refresh() {
-        String addr = act.defaultAddress();
+        String addr = shownAddr.isEmpty() ? act.defaultAddress() : shownAddr;
         if (addr == null || addr.isEmpty()) {
             address.setText("Fetching address…");
             qr.setImageBitmap(null);
-            return;
+        } else if (!addr.equals(shownAddr) || qr.getDrawable() == null) {
+            showAddress(addr);
         }
-        address.setText(addr);
-        renderQr(addr);
+        renderList();
     }
 
-    /** getaddress is no longer fetched on every reload — fetch it lazily when the tab is opened. */
+    /** getaddress is fetched lazily when the tab is opened. */
     @Override
     public void onShown() {
-        String addr = act.defaultAddress();
-        if (addr == null || addr.isEmpty()) fetchFresh();
+        if (shownAddr.isEmpty() && (act.defaultAddress() == null || act.defaultAddress().isEmpty())) {
+            fetchFresh();
+        }
     }
 
-    /** Asks the node for a fresh getaddress, caches it, then updates the label and QR. */
+    /** Asks the node for a getaddress (rotates through the default pool), then shows it. */
     private void fetchFresh() {
         act.node().cmd("getaddress", new NodeApi.Cb() {
             @Override public void onResult(JSONObject json) {
                 JSONObject r = json.optJSONObject("response");
                 String addr = r == null ? "" : r.optString("miniaddress", r.optString("address", ""));
                 if (!addr.isEmpty()) {
-                    act.setDefaultAddress(addr);   // so the display and the Copy button both work
-                    address.setText(addr);
-                    renderQr(addr);
+                    act.setDefaultAddress(addr);
+                    showAddress(addr);
                 }
             }
             @Override public void onError(String message) {
@@ -79,6 +91,84 @@ public class ReceiveView extends BaseView {
                 }
             }
         });
+    }
+
+    /** Display one address: label, QR, and its safety report. */
+    private void showAddress(String addr) {
+        shownAddr = addr;
+        String hex = hexFor(addr);
+        address.setText(hex.isEmpty() || hex.equals(addr) ? addr : addr + "\n" + hex);
+        renderQr(addr);
+        checkSafety(addr);
+    }
+
+    /** The node vouches for its own address: belongs to this node + safe to use. */
+    private void checkSafety(final String addr) {
+        safety.setVisibility(View.GONE);
+        act.node().cmd("checkaddress address:" + addr, new NodeApi.Cb() {
+            @Override public void onResult(JSONObject json) {
+                if (!addr.equals(shownAddr)) return;   // stale reply for a rotated address
+                JSONObject r = json.optJSONObject("response");
+                if (r == null) return;
+                boolean mine = r.optBoolean("relevant", r.optBoolean("belongs", false));
+                boolean simple = r.optBoolean("simple", false);
+                StringBuilder s = new StringBuilder();
+                s.append(mine ? "✓ Belongs to this node" : "◦ Not recognised as this node's address");
+                if (simple) s.append("   ·   ✓ Safe to use");
+                safety.setText(s.toString());
+                safety.setTextColor(mine ? Design.success() : Design.amber());
+                safety.setBackgroundColor(Design.surface());
+                safety.setVisibility(View.VISIBLE);
+            }
+            @Override public void onError(String message) { /* report is best-effort */ }
+        });
+    }
+
+    /** All wallet addresses from the scripts pool — tap to swap the QR to that address. */
+    private void renderList() {
+        list.removeAllViews();
+        java.util.List<String[]> addrs = act.myAddresses();
+        if (addrs.isEmpty()) { listLabel.setVisibility(View.GONE); return; }
+        listLabel.setVisibility(View.VISIBLE);
+        int n = Math.min(addrs.size(), 64);
+        for (int i = 0; i < n; i++) {
+            final String mini = addrs.get(i)[1];
+            final String hex = addrs.get(i)[0];
+            LinearLayout r = new LinearLayout(act);
+            r.setOrientation(LinearLayout.HORIZONTAL);
+            r.setGravity(Gravity.CENTER_VERTICAL);
+            r.setPadding(dp(10), dp(8), dp(10), dp(8));
+            boolean active = mini.equals(shownAddr) || hex.equals(shownAddr);
+            r.setBackgroundColor(active ? Design.accentSoft() : Design.surface());
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.bottomMargin = dp(4);
+            r.setLayoutParams(lp);
+
+            TextView t = new TextView(act);
+            t.setText(Util.shorten(mini));
+            t.setTextColor(active ? Design.accent() : Design.text());
+            t.setTextSize(12f);
+            t.setTypeface(android.graphics.Typeface.MONOSPACE);
+            r.addView(t, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+            if (active) {
+                TextView chip = new TextView(act);
+                chip.setText("SHOWING");
+                chip.setTextColor(Design.accent());
+                chip.setTextSize(9f);
+                chip.setLetterSpacing(0.1f);
+                r.addView(chip);
+            }
+            r.setOnClickListener(v -> { showAddress(mini); renderList(); });
+            list.addView(r);
+        }
+    }
+
+    /** The 0x form of a shown Mx address, from the wallet's address pool ("" if unknown). */
+    private String hexFor(String mini) {
+        for (String[] a : act.myAddresses()) if (a[1].equals(mini)) return a[0];
+        return "";
     }
 
     /** Encodes the address to a QR bitmap off the UI thread; tag guards against stale results. */
@@ -106,12 +196,12 @@ public class ReceiveView extends BaseView {
         }).start();
     }
 
-    /** Copies the cached default address to the clipboard and toasts confirmation. */
+    /** Copies the displayed address to the clipboard and toasts confirmation. */
     private void copyAddress() {
-        String addr = act.defaultAddress();
+        String addr = shownAddr.isEmpty() ? act.defaultAddress() : shownAddr;
         if (addr == null || addr.isEmpty()) return;
-        ClipboardManager cm = (ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE);
-        cm.setPrimaryClip(ClipData.newPlainText("Minima address", addr));
-        Toast.makeText(act, "Address copied", Toast.LENGTH_SHORT).show();
+        CoinDetailDialog.copy(act, "Address", addr);
     }
+
+    private int dp(int v) { return (int) (v * act.getResources().getDisplayMetrics().density); }
 }

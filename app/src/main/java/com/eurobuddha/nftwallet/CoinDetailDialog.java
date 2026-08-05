@@ -1,0 +1,145 @@
+package com.eurobuddha.nftwallet;
+
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
+import android.graphics.Typeface;
+import android.view.Gravity;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import java.util.regex.Pattern;
+
+/**
+ * Full-granularity modal for a single UTXO: every field the node reports — coinid, address
+ * (0x + Mx), amounts (token + raw Minima-scale), created block / age / confirmations, MMR entry,
+ * store-state and spendability flags — plus every state variable, with an inline image preview
+ * for embedded StateNFT art ({@code [base64]} at port 1). Every value is tap-to-copy.
+ */
+public final class CoinDetailDialog {
+
+    /** Bracketed base64 — the StateNFT embedded-image shape for state values. */
+    private static final Pattern EMBED = Pattern.compile("^\\[[A-Za-z0-9+/=]*\\]$");
+
+    private CoinDetailDialog() {}
+
+    public static void show(MainActivity act, Coin c) {
+        ScrollView sv = new ScrollView(act);
+        LinearLayout box = new LinearLayout(act);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(act, 20), dp(act, 14), dp(act, 20), dp(act, 14));
+        box.setBackgroundColor(Design.bg());
+        sv.addView(box);
+
+        // headline: amount + token
+        TextView amt = new TextView(act);
+        amt.setText(Util.tidyAmount(c.amount) + "  " + c.tokenName);
+        amt.setTextColor(Design.heading());
+        amt.setTextSize(19f);
+        amt.setTypeface(Design.typefaceBold());
+        box.addView(amt);
+
+        // status chips line
+        TextView chips = new TextView(act);
+        StringBuilder st = new StringBuilder(c.sendable ? "SENDABLE" : "LOCKED / TRACK-ONLY");
+        if (c.storestate) st.append("  ·  STORES STATE");
+        if (c.spent) st.append("  ·  SPENT");
+        chips.setText(st.toString());
+        chips.setTextColor(c.sendable ? Design.success() : Design.amber());
+        chips.setTextSize(10f);
+        chips.setLetterSpacing(0.08f);
+        chips.setPadding(0, dp(act, 2), 0, dp(act, 8));
+        box.addView(chips);
+
+        addCopyKv(act, box, "Coin ID", c.coinid);
+        addCopyKv(act, box, "Address", c.address);
+        if (c.miniaddress != null && !c.miniaddress.isEmpty() && !c.miniaddress.equals(c.address)) {
+            addCopyKv(act, box, "Mx address", c.miniaddress);
+        }
+        addCopyKv(act, box, "Token ID", c.tokenid);
+        if (!Util.isMinima(c.tokenid) && c.rawAmount != null && !c.rawAmount.equals(c.amount)) {
+            addCopyKv(act, box, "Raw amount (Minima scale)", c.rawAmount);
+        }
+        if (c.created != null && !c.created.isEmpty()) {
+            long age = c.ageBlocks(act.chainBlock());
+            String detail = c.created + (age >= 0 ? "   (" + age + " blocks ago)" : "");
+            addCopyKv(act, box, "Created block", detail);
+        }
+        if (c.mmrentry != null && !c.mmrentry.isEmpty()) {
+            addCopyKv(act, box, "MMR entry", c.mmrentry);
+        }
+
+        // ---- state variables ----
+        if (!c.state.isEmpty()) {
+            TextView sl = new TextView(act);
+            sl.setText("STATE VARIABLES (" + c.state.size() + ")");
+            sl.setTextColor(Design.dim());
+            sl.setTextSize(11f);
+            sl.setLetterSpacing(0.1f);
+            sl.setPadding(0, dp(act, 14), 0, dp(act, 4));
+            box.addView(sl);
+
+            for (String[] s : c.state) {
+                String port = s[0], data = s[1] == null ? "" : s[1];
+                boolean embedded = EMBED.matcher(data).matches() && data.length() > 8;
+                String shown = data.length() > 120 ? data.substring(0, 117) + "…" : data;
+                addCopyKv(act, box, "Port " + port + (embedded ? "  ·  embedded image" : ""), shown, data);
+
+                if (embedded) {
+                    // Render the on-chain art inline (strip the [] wrapper → data URI).
+                    String b64 = data.substring(1, data.length() - 1);
+                    ImageView iv = new ImageView(act);
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(act, 120), dp(act, 120));
+                    lp.topMargin = dp(act, 4); lp.bottomMargin = dp(act, 6);
+                    lp.gravity = Gravity.CENTER_HORIZONTAL;
+                    iv.setLayoutParams(lp);
+                    iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                    ImageLoader.loadOver(act, "data:image/jpeg;base64," + b64, iv, null);
+                    box.addView(iv);
+                }
+            }
+        }
+
+        new androidx.appcompat.app.AlertDialog.Builder(act)
+                .setView(sv)
+                .setPositiveButton("Close", null)
+                .show();
+    }
+
+    /** Label + monospace value row; tapping copies the full value to the clipboard. */
+    private static void addCopyKv(MainActivity act, LinearLayout box, String label, String shown) {
+        addCopyKv(act, box, label, shown, shown);
+    }
+
+    private static void addCopyKv(MainActivity act, LinearLayout box, String label,
+                                  String shown, String full) {
+        TextView l = new TextView(act);
+        l.setText(label);
+        l.setTextColor(Design.dim());
+        l.setTextSize(11f);
+        l.setPadding(0, dp(act, 8), 0, dp(act, 1));
+        box.addView(l);
+
+        TextView v = new TextView(act);
+        v.setText(shown);
+        v.setTextColor(Design.text());
+        v.setTextSize(12f);
+        v.setTypeface(Typeface.MONOSPACE);
+        box.addView(v);
+        v.setOnClickListener(x -> copy(act, label, full));
+    }
+
+    static void copy(Context ctx, String label, String value) {
+        if (value == null || value.isEmpty()) return;
+        ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+        cm.setPrimaryClip(ClipData.newPlainText(label, value));
+        Toast.makeText(ctx, label + " copied", Toast.LENGTH_SHORT).show();
+    }
+
+    private static int dp(MainActivity act, int v) {
+        return (int) (v * act.getResources().getDisplayMetrics().density);
+    }
+}

@@ -21,16 +21,25 @@ import java.util.List;
 public class BalancesView extends BaseView {
 
     private final LinearLayout container;
+    private final android.widget.EditText search;
 
-    /** Inflates the balances container and renders the first listing. */
+    /** Inflates the balances container, wires the search filter, renders the first listing. */
     public BalancesView(MainActivity a) {
         super(a, R.layout.view_balances);
         container = find(R.id.balancesContainer);
+        search = find(R.id.balSearch);
         root.setBackgroundColor(Design.bg());
+        search.setBackgroundColor(Design.surface2());
+        search.setTextColor(Design.text());
+        search.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) { refresh(); }
+        });
         refresh();
     }
 
-    /** Rebuilds one rich card per token from the aggregated balances. */
+    /** Rebuilds one rich card per token from the aggregated balances (search-filtered). */
     @Override
     public void refresh() {
         container.removeAllViews();
@@ -45,7 +54,29 @@ public class BalancesView extends BaseView {
             return;
         }
 
-        for (TokenBalance b : balances) container.addView(buildCard(b));
+        String q = search.getText().toString().trim().toLowerCase();
+        int shown = 0;
+        for (TokenBalance b : balances) {
+            if (!matches(b, q)) continue;
+            container.addView(buildCard(b));
+            shown++;
+        }
+        if (shown == 0) {
+            TextView tv = new TextView(act);
+            tv.setText("Nothing matches “" + q + "”.");
+            tv.setTextColor(Design.dim());
+            tv.setGravity(Gravity.CENTER);
+            tv.setPadding(0, dp(40), 0, 0);
+            container.addView(tv);
+        }
+    }
+
+    /** Search filter: name, ticker or tokenid substring (case-insensitive). */
+    private boolean matches(TokenBalance b, String q) {
+        if (q.isEmpty()) return true;
+        if (b.name != null && b.name.toLowerCase().contains(q)) return true;
+        if (b.meta != null && b.meta.ticker != null && b.meta.ticker.toLowerCase().contains(q)) return true;
+        return b.tokenid != null && b.tokenid.toLowerCase().contains(q);
     }
 
     private final Runnable refreshTask = this::refresh;
@@ -147,14 +178,14 @@ public class BalancesView extends BaseView {
 
         card.addView(top);
 
-        // sendable / locked / pending split (only when there's a locked or pending part)
+        // Full-granularity split — sendable / confirmed / unconfirmed always visible
+        // (the family convention), plus locked when a contract is holding part of the balance.
+        card.addView(divider());
+        card.addView(splitRow("SENDABLE", Util.tidyAmount(b.sendable), Design.accent()));
+        card.addView(splitRow("CONFIRMED", Util.tidyAmount(b.confirmed), Design.dim()));
+        card.addView(splitRow("UNCONFIRMED", Util.tidyAmount(b.unconfirmed), Design.dim()));
         String locked = lockedAmount(b);
-        if (positive(locked) || positive(b.unconfirmed)) {
-            card.addView(divider());
-            card.addView(splitRow("SENDABLE", Util.tidyAmount(b.sendable), Design.accent()));
-            if (positive(locked)) card.addView(splitRow("LOCKED", Util.tidyAmount(locked), Design.dim()));
-            if (positive(b.unconfirmed)) card.addView(splitRow("PENDING", Util.tidyAmount(b.unconfirmed), Design.dim()));
-        }
+        if (positive(locked)) card.addView(splitRow("LOCKED", Util.tidyAmount(locked), Design.amber()));
 
         card.setOnClickListener(v -> showTokenDetail(b));
         return card;
@@ -253,11 +284,12 @@ public class BalancesView extends BaseView {
         title.setGravity(Gravity.CENTER); title.setTypeface(Design.typeface(), android.graphics.Typeface.BOLD);
         title.setPadding(0, 0, 0, dp(8)); box.addView(title);
 
+        // Full-granularity balance triple — always, per the family convention. Tap any row to copy.
         addKv(box, "Sendable", Util.tidyAmount(b.sendable));
         addKv(box, "Confirmed", Util.tidyAmount(b.confirmed));
-        if (positive(b.unconfirmed)) addKv(box, "Pending", Util.tidyAmount(b.unconfirmed));
+        addKv(box, "Unconfirmed", Util.tidyAmount(b.unconfirmed));
         String locked = lockedAmount(b);
-        if (positive(locked)) addKv(box, "Locked", Util.tidyAmount(locked));
+        if (positive(locked)) addKv(box, "Locked in contracts", Util.tidyAmount(locked));
         addKv(box, "Coins", String.valueOf(b.coins));
         String supply = (b.isMinima() && !act.circulatingSupply().isEmpty())
                 ? wholeNumber(act.circulatingSupply()) : Util.tidyAmount(b.total);
@@ -266,10 +298,11 @@ public class BalancesView extends BaseView {
         if (b.meta.decimals != null && !b.meta.decimals.isEmpty()) addKv(box, "Decimals", b.meta.decimals);
         if (notEmpty(b.meta.owner)) addKv(box, "Owner", b.meta.owner);
 
-        box.addView(sectionLabel("Token ID"));
+        box.addView(sectionLabel("Token ID  ·  tap to copy"));
         TextView idv = new TextView(act);
         idv.setText(b.tokenid); idv.setTextColor(Design.text()); idv.setTextSize(12f);
-        idv.setTextIsSelectable(true); idv.setTypeface(android.graphics.Typeface.MONOSPACE);
+        idv.setTypeface(android.graphics.Typeface.MONOSPACE);
+        idv.setOnClickListener(v -> CoinDetailDialog.copy(act, "Token ID", b.tokenid));
         box.addView(idv);
 
         if (notEmpty(b.meta.description)) {
@@ -278,14 +311,151 @@ public class BalancesView extends BaseView {
             d.setText(b.meta.description); d.setTextColor(Design.dim()); d.setTextSize(13f);
             box.addView(d);
         }
-        if (notEmpty(b.meta.externalUrl)) box.addView(linkRow("Website", b.meta.externalUrl));
+
+        // Every URL the token carries, each openable in the external browser.
+        if (notEmpty(b.meta.rawUrl)) box.addView(linkRow("Token URL", b.meta.rawUrl));
+        if (notEmpty(b.meta.externalUrl) && !b.meta.externalUrl.equals(b.meta.rawUrl)) {
+            box.addView(linkRow("Website", b.meta.externalUrl));
+        }
         if (notEmpty(b.meta.webvalidate)) box.addView(linkRow("Web validation", b.meta.webvalidate));
 
-        new androidx.appcompat.app.AlertDialog.Builder(act)
+        // Contract + coin explorer load into these as the node replies arrive.
+        final LinearLayout contractBox = new LinearLayout(act);
+        contractBox.setOrientation(LinearLayout.VERTICAL);
+        box.addView(contractBox);
+        final LinearLayout coinsBox = new LinearLayout(act);
+        coinsBox.setOrientation(LinearLayout.VERTICAL);
+        box.addView(coinsBox);
+
+        if (!b.isMinima()) loadContract(b, contractBox);
+        loadCoins(b, coinsBox);
+
+        androidx.appcompat.app.AlertDialog.Builder dlg = new androidx.appcompat.app.AlertDialog.Builder(act)
                 .setView(sv)
-                .setPositiveButton("Receive", (d, w) -> act.goToTab(MainActivity.TAB_RECEIVE))
                 .setNegativeButton("Close", null)
-                .show();
+                .setNeutralButton("Receive", (d, w) -> act.goToTab(MainActivity.TAB_RECEIVE));
+        if (positive(b.sendable)) {
+            dlg.setPositiveButton("Send", (d, w) -> act.sendToken(b.tokenid));
+        }
+        dlg.show();
+    }
+
+    /** Fetch the token record (script, total, creation) and add a collapsible contract section. */
+    private void loadContract(TokenBalance b, final LinearLayout into) {
+        act.node().cmd("tokens tokenid:" + b.tokenid, new NodeApi.Cb() {
+            @Override public void onResult(org.json.JSONObject json) {
+                Object resp = json.opt("response");
+                org.json.JSONObject tok = null;
+                if (resp instanceof org.json.JSONObject) tok = (org.json.JSONObject) resp;
+                else if (resp instanceof org.json.JSONArray && ((org.json.JSONArray) resp).length() > 0) {
+                    tok = ((org.json.JSONArray) resp).optJSONObject(0);
+                }
+                if (tok == null) return;
+                final String script = tok.optString("script", "");
+                if (script.isEmpty()) return;
+                into.addView(sectionLabel("Token script"));
+                boolean plain = "RETURN TRUE".equalsIgnoreCase(script.trim());
+                boolean stateNft = StateNft.isStateNftScript(script);
+                TextView tag = new TextView(act);
+                tag.setText(plain ? "Standard token (RETURN TRUE)"
+                        : stateNft ? "STATE NFT — locked-edition contract" : "Custom contract");
+                tag.setTextColor(stateNft ? Design.accent() : Design.dim());
+                tag.setTextSize(12f);
+                into.addView(tag);
+                if (!plain) {
+                    final TextView code = new TextView(act);
+                    code.setText(script);
+                    code.setTextColor(Design.dim());
+                    code.setTextSize(10f);
+                    code.setTypeface(android.graphics.Typeface.MONOSPACE);
+                    code.setBackgroundColor(Design.surface());
+                    code.setPadding(dp(8), dp(6), dp(8), dp(6));
+                    code.setVisibility(View.GONE);
+                    TextView toggle = new TextView(act);
+                    toggle.setText("View contract source ▸");
+                    toggle.setTextColor(Design.accent());
+                    toggle.setTextSize(12f);
+                    toggle.setPadding(0, dp(4), 0, dp(4));
+                    toggle.setOnClickListener(v -> {
+                        boolean open = code.getVisibility() == View.VISIBLE;
+                        code.setVisibility(open ? View.GONE : View.VISIBLE);
+                        toggle.setText(open ? "View contract source ▸" : "Hide contract source ▾");
+                    });
+                    code.setOnClickListener(v -> CoinDetailDialog.copy(act, "Token script", script));
+                    into.addView(toggle);
+                    into.addView(code);
+                }
+            }
+            @Override public void onError(String message) { /* detail stays without the script */ }
+        });
+    }
+
+    /** Coin explorer: every UTXO of this token, newest first, tap a row for the full coin modal. */
+    private static final int MAX_COIN_ROWS = 100;
+
+    private void loadCoins(TokenBalance b, final LinearLayout into) {
+        act.node().cmd("coins relevant:true tokenid:" + b.tokenid, new NodeApi.Cb() {
+            @Override public void onResult(org.json.JSONObject json) {
+                org.json.JSONArray arr = json.optJSONArray("response");
+                if (arr == null || arr.length() == 0) return;
+                into.addView(sectionLabel("Coins (" + arr.length() + ")  ·  tap for full detail"));
+                int n = Math.min(arr.length(), MAX_COIN_ROWS);
+                for (int i = 0; i < n; i++) {
+                    org.json.JSONObject cj = arr.optJSONObject(i);
+                    if (cj == null) continue;
+                    final Coin c = Coin.from(cj);
+                    // sendable flag comes from the main wallet scan when we track this coin
+                    for (Coin known : act.coins()) {
+                        if (known.coinid.equals(c.coinid)) { c.sendable = known.sendable; break; }
+                    }
+                    into.addView(coinRow(c));
+                }
+                if (arr.length() > n) {
+                    TextView more = new TextView(act);
+                    more.setText("Showing " + n + " of " + arr.length() + " coins.");
+                    more.setTextColor(Design.dim()); more.setTextSize(11f);
+                    more.setPadding(0, dp(4), 0, 0);
+                    into.addView(more);
+                }
+            }
+            @Override public void onError(String message) {
+                if (NodeApi.ERR_TOO_LONG.equals(message)) {
+                    TextView t = new TextView(act);
+                    t.setText("Too many coins to list here — use the Coins tab.");
+                    t.setTextColor(Design.dim()); t.setTextSize(11f);
+                    into.addView(t);
+                }
+            }
+        });
+    }
+
+    /** One coin-explorer row: amount, short coinid, age, and state/lock chips. */
+    private View coinRow(final Coin c) {
+        LinearLayout r = new LinearLayout(act);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(0, dp(6), 0, dp(6));
+
+        LinearLayout left = new LinearLayout(act);
+        left.setOrientation(LinearLayout.VERTICAL);
+        TextView amt = mono(Util.tidyAmount(c.amount), 13f, Design.text(), true);
+        left.addView(amt);
+        long age = c.ageBlocks(act.chainBlock());
+        String sub = Util.shorten(c.coinid) + (age >= 0 ? "  ·  " + age + " blk" : "");
+        TextView id = mono(sub, 10f, Design.dim(), false);
+        left.addView(id);
+        r.addView(left, new LinearLayout.LayoutParams(0, WC, 1f));
+
+        StringBuilder chips = new StringBuilder();
+        if (!c.state.isEmpty()) chips.append("STATE ").append(c.state.size());
+        if (!c.sendable) chips.append(chips.length() > 0 ? " · " : "").append("LOCKED");
+        if (chips.length() > 0) {
+            TextView chip = mono(chips.toString(), 9f, c.sendable ? Design.amber() : Design.dim(), true);
+            chip.setLetterSpacing(0.06f);
+            r.addView(chip);
+        }
+        r.setOnClickListener(v -> CoinDetailDialog.show(act, c));
+        return r;
     }
 
     /** Full-screen, full-resolution image (for NFT art). Tap to dismiss. */
@@ -300,13 +470,15 @@ public class BalancesView extends BaseView {
         dlg.show();
     }
 
-    private void addKv(LinearLayout box, String label, String value) {
+    /** Label/value row; tapping it copies the value (the old wallet's copy-everywhere behaviour). */
+    private void addKv(LinearLayout box, final String label, final String value) {
         LinearLayout r = new LinearLayout(act);
         r.setOrientation(LinearLayout.HORIZONTAL); r.setPadding(0, dp(4), 0, dp(4));
         TextView l = new TextView(act); l.setText(label); l.setTextColor(Design.dim()); l.setTextSize(13f);
         TextView v = new TextView(act); v.setText(value); v.setTextColor(Design.text()); v.setTextSize(13f); v.setGravity(Gravity.END);
         r.addView(l, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         r.addView(v, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.6f));
+        r.setOnClickListener(x -> CoinDetailDialog.copy(act, label, value));
         box.addView(r);
     }
 

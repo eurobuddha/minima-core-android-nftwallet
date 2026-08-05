@@ -19,6 +19,8 @@ public class TokenMeta {
     public String owner = "";
     public String webvalidate = "";
     public String externalUrl = "";
+    /** The token's "url" field verbatim when it is a plain http(s) link (openable), else "". */
+    public String rawUrl = "";
 
     public static TokenMeta parse(Object token, String tokenid) {
         TokenMeta m = new TokenMeta();
@@ -67,6 +69,11 @@ public class TokenMeta {
             m.externalUrl = decode(first(
                     meta != null ? meta.optString("external_url", "") : "",
                     t.optString("external_url", "")));
+            // Keep the url field itself openable when it's a plain link (it may double as the icon).
+            String rawUrl = decode(first(
+                    meta != null ? meta.optString("url", "") : "",
+                    t.optString("url", "")));
+            if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) m.rawUrl = rawUrl;
         }
         return m;
     }

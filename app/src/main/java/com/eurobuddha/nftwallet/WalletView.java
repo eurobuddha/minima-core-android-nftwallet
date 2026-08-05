@@ -381,7 +381,8 @@ public class WalletView extends BaseView {
         row.addView(st);
 
         row.setOnClickListener(v -> { if (usable) act.toggleCoin(c); });
-        row.setOnLongClickListener(v -> { copyToClipboard("Coin id", c.coinid); return true; });
+        // Long-press: the full-granularity coin modal (every field + state vars, tap-to-copy).
+        row.setOnLongClickListener(v -> { CoinDetailDialog.show(act, c); return true; });
         return row;
     }
 

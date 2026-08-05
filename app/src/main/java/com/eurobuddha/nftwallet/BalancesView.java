@@ -449,6 +449,9 @@ public class BalancesView extends BaseView {
                     org.json.JSONObject cj = arr.optJSONObject(i);
                     if (cj == null) continue;
                     final Coin c = Coin.from(cj);
+                    // Same ingestion rule as the main coin list: a coin whose command-bound fields
+                    // aren't well formed never reaches the UI or a transaction.
+                    if (!c.isWellFormed()) continue;
                     // sendable flag comes from the main wallet scan when we track this coin
                     for (Coin known : act.coins()) {
                         if (known.coinid.equals(c.coinid)) { c.sendable = known.sendable; break; }

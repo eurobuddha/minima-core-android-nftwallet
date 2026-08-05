@@ -133,6 +133,17 @@ public final class StateNft {
         return s0 != null && !"0".equals(s0) ? s0 : null;
     }
 
+    /**
+     * The coin's token amount, or "" when it isn't a plain decimal. Amounts are interpolated into
+     * commands, so a synthetic coin carrying "1 burn:9999" must not build a transaction — callers
+     * pair this with {@link #replayableState} and the id gate; an empty amount makes txncheck fail
+     * before anything is signed.
+     */
+    public static String safeAmount(JSONObject coin) {
+        String a = coin == null ? "" : coin.optString("tokenamount", "1");
+        return a.matches("^[0-9]+(\\.[0-9]+)?$") ? a : "";
+    }
+
     public static boolean safeStateValue(Object v) {
         String s = String.valueOf(v);
         return s.matches("^[0-9]+$") || s.matches("^\\[[A-Za-z0-9+/=]*\\]$");
@@ -203,7 +214,7 @@ public final class StateNft {
         cmds.add("txninput id:" + txn + " coinid:" + coin.optString("coinid"));
         // The unit's real amount — hardcoding 1 builds an unbalanced txn on any coin holding more,
         // which posts "fine" and is silently rejected on-chain.
-        cmds.add("txnoutput id:" + txn + " amount:" + coin.optString("tokenamount", "1")
+        cmds.add("txnoutput id:" + txn + " amount:" + safeAmount(coin)
                 + " address:" + to + " tokenid:" + tokenid + " storestate:true");
         JSONArray st = coin.optJSONArray("state");
         if (st != null) {
@@ -225,7 +236,7 @@ public final class StateNft {
         cmds.add("txndelete id:" + txn);
         cmds.add("txncreate id:" + txn);
         cmds.add("txninput id:" + txn + " coinid:" + coin.optString("coinid"));
-        cmds.add("txnoutput id:" + txn + " amount:" + coin.optString("tokenamount", "1")
+        cmds.add("txnoutput id:" + txn + " amount:" + safeAmount(coin)
                 + " address:" + GRAVEYARD + " tokenid:" + tokenid + " storestate:" + (preserve ? "true" : "false"));
         if (preserve) {
             JSONArray st = coin.optJSONArray("state");

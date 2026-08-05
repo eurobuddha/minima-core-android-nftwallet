@@ -300,14 +300,7 @@ public class MainActivity extends AppCompatActivity {
 
         node.cmd("balance", new NodeApi.Cb() {
             @Override public void onResult(JSONObject json) {
-                balances.clear();
-                JSONArray arr = json.optJSONArray("response");
-                if (arr != null) {
-                    for (int i = 0; i < arr.length(); i++) {
-                        JSONObject b = arr.optJSONObject(i);
-                        if (b != null) balances.add(TokenBalance.from(b));
-                    }
-                }
+                applyBalances(json.optJSONArray("response"));
                 views[TAB_BALANCES].refresh();
                 views[TAB_SEND].refresh();
             }
@@ -350,13 +343,7 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onResult(JSONObject json) {
                 setPaired(true);
                 coins.clear();
-                JSONArray arr = json.optJSONArray("response");
-                if (arr != null) {
-                    for (int i = 0; i < arr.length(); i++) {
-                        JSONObject c = arr.optJSONObject(i);
-                        if (c != null) coins.add(Coin.from(c));
-                    }
-                }
+                addCoins(json.optJSONArray("response"));
                 loadSendable();
             }
             @Override public void onError(String message) {
@@ -366,26 +353,57 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    /** Fallback: one bounded `coins … tokenid:` per known token, accumulated into the coin list. */
+    /**
+     * Fallback: one bounded `coins … tokenid:` per known token, accumulated into the coin list.
+     *
+     * The token list comes from `balance`, which reload() fires CONCURRENTLY — on a cold start or
+     * a rotation it hasn't landed yet, and an empty list here would silently yield an empty wallet
+     * until the next block. So when balances aren't loaded, fetch them first (small reply) and
+     * chain from there.
+     */
     private void loadCoinsPerToken() {
+        coins.clear();
+        if (balances.isEmpty()) {
+            node.cmd("balance", new NodeApi.Cb() {
+                @Override public void onResult(JSONObject json) {
+                    applyBalances(json.optJSONArray("response"));
+                    fetchCoinsForKnownTokens();
+                }
+                @Override public void onError(String message) { loadSendable(); }
+            });
+            return;
+        }
+        fetchCoinsForKnownTokens();
+    }
+
+    private void fetchCoinsForKnownTokens() {
         final java.util.List<String> tokenids = new ArrayList<>();
         for (TokenBalance b : balances) if (Util.isValidHexId(b.tokenid)) tokenids.add(b.tokenid);
-        coins.clear();
         if (tokenids.isEmpty()) { loadSendable(); return; }
         fetchCoinsFor(tokenids, 0);
+    }
+
+    /** Parse coins, dropping any whose command-bound fields aren't well formed. */
+    private void addCoins(JSONArray arr) {
+        if (arr == null) return;
+        int dropped = 0;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject c = arr.optJSONObject(i);
+            if (c == null) continue;
+            Coin coin = Coin.from(c);
+            if (coin.isWellFormed()) coins.add(coin); else dropped++;
+        }
+        if (dropped > 0) {
+            Toast.makeText(this, dropped + " malformed coin(s) ignored — a token's metadata looks hostile.",
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     private void fetchCoinsFor(final java.util.List<String> tokenids, final int i) {
         if (i >= tokenids.size()) { loadSendable(); return; }
         node.cmd("coins relevant:true tokenid:" + tokenids.get(i), new NodeApi.Cb() {
             @Override public void onResult(JSONObject json) {
-                JSONArray arr = json.optJSONArray("response");
-                if (arr != null) {
-                    for (int k = 0; k < arr.length(); k++) {
-                        JSONObject c = arr.optJSONObject(k);
-                        if (c != null) coins.add(Coin.from(c));
-                    }
-                }
+                addCoins(json.optJSONArray("response"));
                 fetchCoinsFor(tokenids, i + 1);
             }
             @Override public void onError(String message) {
@@ -393,6 +411,16 @@ public class MainActivity extends AppCompatActivity {
                 fetchCoinsFor(tokenids, i + 1);
             }
         });
+    }
+
+    /** Replace the balance list from a `balance` reply. */
+    private void applyBalances(JSONArray arr) {
+        balances.clear();
+        if (arr == null) return;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject b = arr.optJSONObject(i);
+            if (b != null) balances.add(TokenBalance.from(b));
+        }
     }
 
     /** The sendable subset marks which coins can be spent (script coins are never sendable). */

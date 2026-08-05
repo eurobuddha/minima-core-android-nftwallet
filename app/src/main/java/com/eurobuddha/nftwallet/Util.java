@@ -31,6 +31,14 @@ public final class Util {
         return id != null && (MINIMA_TOKENID.equals(id) || id.matches("^0x[0-9a-fA-F]{2,64}$"));
     }
 
+    /**
+     * A plain decimal amount as the node emits them. Amounts are interpolated into commands too,
+     * so a chain-supplied "1 burn:9999" must never reach one.
+     */
+    public static boolean isValidAmount(String amt) {
+        return amt != null && amt.matches("^[0-9]+(\\.[0-9]+)?$");
+    }
+
     /** True only for a plain http(s) link — the only scheme we hand to ACTION_VIEW. */
     public static boolean isWebUrl(String url) {
         if (url == null) return false;

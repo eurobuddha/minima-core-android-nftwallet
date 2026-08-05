@@ -64,6 +64,23 @@ public class Coin {
         return x;
     }
 
+    /**
+     * True when every field this coin contributes to a node command is a plain, well-formed value.
+     *
+     * Coin JSON is chain data: the node serialises a JSON-shaped token name into its replies
+     * unescaped, so a hostile token can inject entirely synthetic coin objects with attacker-chosen
+     * ids/amounts. Node commands are whitespace-parsed and multi-commands split on ';', so ONE
+     * unvetted field is arbitrary command execution. Coins that fail this are dropped at ingestion
+     * (MainActivity) and never reach the coin list, a txn builder, or the UI.
+     */
+    public boolean isWellFormed() {
+        return Util.isValidHexId(coinid)
+                && Util.isValidHexId(tokenid)
+                && Util.isValidAmount(amount)
+                && Util.isValidAmount(rawAmount)
+                && (address == null || address.isEmpty() || Util.isValidHexId(address));
+    }
+
     /** Blocks since creation at the given chain tip, or -1 when unknown. */
     public long ageBlocks(int chainBlock) {
         try { return Math.max(0, chainBlock - Long.parseLong(created)); }

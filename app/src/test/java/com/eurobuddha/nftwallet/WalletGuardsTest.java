@@ -100,6 +100,49 @@ public class WalletGuardsTest {
         assertTrue(StateNft.replayableState(clean));
     }
 
+    @Test public void amountValidatorRejectsSmuggledParameters() {
+        assertTrue(Util.isValidAmount("1"));
+        assertTrue(Util.isValidAmount("250.5"));
+        assertFalse(Util.isValidAmount("1 burn:9999"));
+        assertFalse(Util.isValidAmount("1;send address:Mx1 amount:5"));
+        assertFalse(Util.isValidAmount("-1"));
+        assertFalse(Util.isValidAmount(""));
+        assertFalse(Util.isValidAmount(null));
+    }
+
+    /** A synthetic coin injected through a hostile token name must never reach a command. */
+    @Test public void malformedCoinsAreRejectedAtIngestion() throws Exception {
+        JSONObject hostile = new JSONObject();
+        hostile.put("coinid", "0xAB;send address:MxEVIL amount:99");
+        hostile.put("tokenid", "0x00");
+        hostile.put("amount", "1");
+        assertFalse(Coin.from(hostile).isWellFormed());
+
+        JSONObject smuggledAmount = new JSONObject();
+        smuggledAmount.put("coinid", "0xC01D");
+        smuggledAmount.put("tokenid", "0xT0KEN".replace("T0KEN", "AABB"));
+        smuggledAmount.put("amount", "1 burn:9999");
+        assertFalse(Coin.from(smuggledAmount).isWellFormed());
+
+        JSONObject good = new JSONObject();
+        good.put("coinid", "0xC01D");
+        good.put("tokenid", "0x00");
+        good.put("amount", "12.5");
+        good.put("address", "0xAABB");
+        assertTrue(Coin.from(good).isWellFormed());
+    }
+
+    /** A hostile tokenamount yields an empty amount, so txncheck fails before anything is signed. */
+    @Test public void safeAmountBlanksHostileTokenAmounts() throws Exception {
+        JSONObject bad = new JSONObject();
+        bad.put("tokenamount", "1 burn:9999");
+        assertEquals("", StateNft.safeAmount(bad));
+
+        JSONObject ok = new JSONObject();
+        ok.put("tokenamount", "3");
+        assertEquals("3", StateNft.safeAmount(ok));
+    }
+
     private static String joined(List<String> cmds) {
         StringBuilder sb = new StringBuilder();
         for (String c : cmds) sb.append(c).append('\n');

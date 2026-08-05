@@ -304,6 +304,9 @@ public class WalletTools {
             return;
         }
         status.show("Untracking " + (i + 1) + "/" + sel.size() + "…", true);
+        // Belt-and-braces: coins are already vetted at ingestion (Coin.isWellFormed), but this id
+        // goes straight into a command, so never take that on trust.
+        if (!Util.isValidHexId(sel.get(i).coinid)) { untrackNext(sel, i + 1); return; }
         act.node().cmd("cointrack enable:false coinid:" + sel.get(i).coinid, new NodeApi.Cb() {
             @Override public void onResult(JSONObject json) { untrackNext(sel, i + 1); }
             @Override public void onError(String message) {

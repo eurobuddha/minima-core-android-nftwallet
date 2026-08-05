@@ -706,13 +706,45 @@ public class MainActivity extends AppCompatActivity {
 
         tabs.getViewTreeObserver().addOnScrollChangedListener(() -> updateTabArrows(tabs, left, right));
         tabs.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or2, ob) -> updateTabArrows(tabs, left, right));
-        tabs.post(() -> updateTabArrows(tabs, left, right));
+        // Selecting a tab scrolls the strip, which changes what's still off-screen.
+        viewPager.addOnPageChangeListener(new ViewPager.SimpleOnPageChangeListener() {
+            @Override public void onPageSelected(int position) {
+                tabs.postDelayed(() -> updateTabArrows(tabs, left, right), 250);
+            }
+        });
+        // The strip's inner width isn't known until it has been measured AND populated, and the
+        // exact frame that happens on varies by device — so re-check a few times as it settles.
+        for (int delay : new int[]{0, 150, 500, 1200}) {
+            tabs.postDelayed(() -> updateTabArrows(tabs, left, right), delay);
+        }
     }
+
+    /**
+     * Measure the overflow directly rather than asking {@code canScrollHorizontally}, which answers
+     * from a scroll range that isn't populated until the strip has been laid out — so it reported
+     * "nothing to scroll" and the chevrons never appeared at all.
+     */
+    private int lastLeftVis = -1, lastRightVis = -1;
 
     private void updateTabArrows(TabLayout tabs, View left, View right) {
         if (tabs == null || left == null || right == null) return;
-        left.setVisibility(tabs.canScrollHorizontally(-1) ? View.VISIBLE : View.GONE);
-        right.setVisibility(tabs.canScrollHorizontally(1) ? View.VISIBLE : View.GONE);
+        View strip = tabs.getChildCount() > 0 ? tabs.getChildAt(0) : null;
+        if (strip == null) return;
+        int slack = (int) (2 * getResources().getDisplayMetrics().density);
+        int overflow = strip.getWidth() - tabs.getWidth();
+        int x = tabs.getScrollX();
+        final int wantLeft = x > slack ? View.VISIBLE : View.GONE;
+        final int wantRight = overflow > slack && x < overflow - slack ? View.VISIBLE : View.GONE;
+        if (wantLeft == lastLeftVis && wantRight == lastRightVis) return;
+        lastLeftVis = wantLeft;
+        lastRightVis = wantRight;
+        left.setVisibility(wantLeft);
+        right.setVisibility(wantRight);
+        // These flips happen from a layout-change listener, i.e. DURING a layout pass, where
+        // requestLayout() is swallowed — the chevrons went VISIBLE but were never measured, so they
+        // sat at 0x0 and looked like they had never appeared. Re-request outside the pass.
+        final View row = (View) right.getParent();
+        if (row != null) row.post(row::requestLayout);
     }
 
     // ===== StateNFT mint engine driver =====

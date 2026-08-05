@@ -120,12 +120,14 @@
         <TextView
             android:id="@+id/tabScrollLeft"
             android:layout_width="wrap_content"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
             android:text="‹"
-            android:textSize="20sp"
+            android:textSize="22sp"
             android:gravity="center"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp"
+            android:minWidth="34dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
             android:visibility="gone" />
 
         <com.google.android.material.tabs.TabLayout
@@ -142,12 +144,14 @@
         <TextView
             android:id="@+id/tabScrollRight"
             android:layout_width="wrap_content"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
             android:text="›"
-            android:textSize="20sp"
+            android:textSize="22sp"
             android:gravity="center"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp"
+            android:minWidth="34dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
             android:visibility="gone" />
     </LinearLayout>
 

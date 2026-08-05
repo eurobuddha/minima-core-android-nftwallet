@@ -10,8 +10,8 @@ android {
         applicationId "com.eurobuddha.nftwallet"
         minSdk 28
         targetSdk 35
-        versionCode 26
-        versionName "0.0.26"
+        versionCode 31
+        versionName "0.0.31"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }

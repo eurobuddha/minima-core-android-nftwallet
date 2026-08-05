@@ -259,7 +259,7 @@ public class HistoryView extends BaseView {
         mid.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         boolean reshuffle = n.isReshuffle();
         TextView line1 = new TextView(act);
-        line1.setText(reshuffle ? n.grossDisplay() : (sign + Util.tidyAmount(n.amount) + "  " + n.tokenName));
+        line1.setText(reshuffle ? n.grossDisplay() : (sign + Format.amount(n.amount) + "  " + n.tokenName));
         line1.setTextColor(color); line1.setTextSize(15f); line1.setTypeface(Typeface.DEFAULT_BOLD);
         TextView line2 = new TextView(act);
         String cp = (n.counterparty == null || n.counterparty.isEmpty()) ? "" : Util.shorten(n.counterparty) + "  ·  ";

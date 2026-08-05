@@ -186,7 +186,7 @@ public class BalancesView extends BaseView {
         LinearLayout amtCol = new LinearLayout(act);
         amtCol.setOrientation(LinearLayout.VERTICAL);
         amtCol.setGravity(Gravity.END);
-        TextView amt = mono(Util.tidyAmount(b.sendable), 17f, Design.heading(), true);
+        TextView amt = mono(Format.amount(b.sendable), 17f, Design.heading(), true);
         amt.setGravity(Gravity.END);
         amtCol.addView(amt);
         TextView cnt = mono((b.coins + (b.coins == 1 ? " coin" : " coins")).toUpperCase(), 10f, Design.dim(), false);
@@ -199,11 +199,11 @@ public class BalancesView extends BaseView {
         // Full-granularity split — sendable / confirmed / unconfirmed always visible
         // (the family convention), plus locked when a contract is holding part of the balance.
         card.addView(divider());
-        card.addView(splitRow("SENDABLE", Util.tidyAmount(b.sendable), Design.accent()));
-        card.addView(splitRow("CONFIRMED", Util.tidyAmount(b.confirmed), Design.dim()));
-        card.addView(splitRow("UNCONFIRMED", Util.tidyAmount(b.unconfirmed), Design.dim()));
+        card.addView(splitRow("SENDABLE", Format.amount(b.sendable), Design.accent()));
+        card.addView(splitRow("CONFIRMED", Format.amount(b.confirmed), Design.dim()));
+        card.addView(splitRow("UNCONFIRMED", Format.amount(b.unconfirmed), Design.dim()));
         String locked = lockedAmount(b);
-        if (positive(locked)) card.addView(splitRow("LOCKED", Util.tidyAmount(locked), Design.amber()));
+        if (positive(locked)) card.addView(splitRow("LOCKED", Format.amount(locked), Design.amber()));
 
         card.setOnClickListener(v -> showTokenDetail(b));
         return card;
@@ -302,7 +302,9 @@ public class BalancesView extends BaseView {
         title.setGravity(Gravity.CENTER); title.setTypeface(Design.typeface(), android.graphics.Typeface.BOLD);
         title.setPadding(0, 0, 0, dp(8)); box.addView(title);
 
-        // Full-granularity balance triple — always, per the family convention. Tap any row to copy.
+        // Full-granularity balance triple — always, per the family convention, and always at FULL
+        // precision: the cards are trimmed for legibility, this sheet is where the exact figure is.
+        // Tap any row to copy.
         addKv(box, "Sendable", Util.tidyAmount(b.sendable));
         addKv(box, "Confirmed", Util.tidyAmount(b.confirmed));
         addKv(box, "Unconfirmed", Util.tidyAmount(b.unconfirmed));
@@ -486,7 +488,7 @@ public class BalancesView extends BaseView {
 
         LinearLayout left = new LinearLayout(act);
         left.setOrientation(LinearLayout.VERTICAL);
-        TextView amt = mono(Util.tidyAmount(c.amount), 13f, Design.text(), true);
+        TextView amt = mono(Format.amount(c.amount), 13f, Design.text(), true);
         left.addView(amt);
         long age = c.ageBlocks(act.chainBlock());
         String sub = Util.shorten(c.coinid) + (age >= 0 ? "  ·  " + age + " blk" : "");

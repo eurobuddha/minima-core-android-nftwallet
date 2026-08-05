@@ -146,7 +146,7 @@ public class SendView extends BaseView {
             }
             String name = b == null ? "Minima" : displayName(b);
             tokenLabel.setText(name);
-            tokenBal.setText(b == null ? "" : Util.tidyAmount(b.sendable));
+            tokenBal.setText(b == null ? "" : Format.amount(b.sendable));
             boolean minima = Util.isMinima(quickTokenid);
             burnInput.setEnabled(true);   // burn rides alongside any send in quick mode
             burnNote.setVisibility(View.GONE);
@@ -252,7 +252,7 @@ public class SendView extends BaseView {
             n.setText(displayName(b));
             n.setTextColor(Design.text()); n.setTextSize(14f); n.setTypeface(Design.typefaceBold());
             TextView amt = new TextView(act);
-            amt.setText(Util.tidyAmount(b.sendable));
+            amt.setText(Format.amount(b.sendable));
             amt.setTextColor(Design.dim()); amt.setTextSize(13f);
             amt.setTypeface(android.graphics.Typeface.MONOSPACE);
             amt.setGravity(Gravity.END);

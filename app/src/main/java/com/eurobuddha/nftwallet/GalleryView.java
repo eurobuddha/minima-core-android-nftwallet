@@ -174,7 +174,7 @@ public class GalleryView extends BaseView {
                 it.idx = -1;
                 it.name = b.name;
                 it.creator = b.meta == null ? "" : b.meta.owner;
-                it.sub = "nft · " + Util.tidyAmount(b.sendable) + "/" + Util.tidyAmount(b.total);
+                it.sub = "nft · " + Format.amount(b.sendable) + "/" + Format.amount(b.total);
                 it.imageUrl = b.meta == null ? "" : b.meta.iconUrl;
                 it.favKey = b.tokenid;
                 it.webvalidate = b.meta == null ? "" : b.meta.webvalidate;

@@ -99,6 +99,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Design.load(this);                 // must precede view construction (views read Design)
+        Format.load(this);                 // ditto — every list renders amounts through Format
         setContentView(R.layout.activity_main);
 
         // Edge-to-edge is forced on targetSdk 35 — pad the root by the status/nav bar insets so the

@@ -47,6 +47,31 @@ public final class SettingsDialog {
         }
         box.addView(group);
 
+        // ---- amount display ----
+        box.addView(section(act, "DECIMAL PLACES"));
+        TextView dnote = new TextView(act);
+        dnote.setText("Minima carries up to 44 decimal places. Lists are trimmed to this many; "
+                + "detail sheets and transaction confirmations always show the exact figure.");
+        dnote.setTextColor(Design.dim());
+        dnote.setTextSize(11f);
+        box.addView(dnote);
+
+        RadioGroup dgroup = new RadioGroup(act);
+        final int[] places = {2, 4, 8, Format.FULL};
+        for (final int d : places) {
+            RadioButton rb = new RadioButton(act);
+            rb.setText(Format.label(d));
+            rb.setTextColor(Design.text());
+            rb.setTextSize(13f);
+            rb.setChecked(Format.decimals() == d);
+            rb.setOnClickListener(v -> {
+                Format.setDecimals(act, d);
+                act.refreshAll();           // repaint every list with the new precision
+            });
+            dgroup.addView(rb);
+        }
+        box.addView(dgroup);
+
         // ---- hidden tokens ----
         box.addView(section(act, "HIDDEN TOKENS"));
         Set<String> hidden = HiddenTokens.all(act);

@@ -337,6 +337,9 @@ public class MainActivity extends AppCompatActivity {
         // getaddress (~0.5 KB) is only needed for the Receive tab — fetched there on demand, not every
         // reload. scripts (~27 KB) lists the wallet's addresses, which barely change — fetched rarely.
         maybeRefreshScripts();
+
+        // Advance any in-flight StateNFT collection mint — block cadence is the phase-machine clock.
+        mintEngineTick();
     }
 
     /** scripts (~27 KB) lists the wallet's stable default-address pool (64 pre-generated), so it barely
@@ -538,6 +541,41 @@ public class MainActivity extends AppCompatActivity {
         ui.removeCallbacks(reloadTask);
         // 400 ms coalesces the NEWBLOCK + NEWBALANCE burst into a single reload (less node load).
         ui.postDelayed(reloadTask, 400);
+    }
+
+    // ===== StateNFT mint engine driver =====
+
+    private boolean mintTickRunning = false;
+    private String mintStatus = "";
+
+    /** Last engine progress message (shown on the Mint progress screen). */
+    public String mintStatus() { return mintStatus; }
+
+    /**
+     * Advance any active collection mint (CREATE/MOVE/SPLIT/STAMP). Called on every reload —
+     * i.e. per new block, which is exactly the cadence the phase machine wants. Re-entrancy
+     * guarded: a tick chains many node commands and must not overlap itself.
+     */
+    public void mintEngineTick() {
+        if (mintTickRunning || node == null) return;
+        if (!hasActiveMint()) return;
+        mintTickRunning = true;
+        MintEngine.tick(this, node, message -> {
+            mintTickRunning = false;
+            mintStatus = message == null ? "" : message;
+            ((MintView) views[TAB_MINT]).onEngineTick();
+        });
+    }
+
+    private boolean hasActiveMint() {
+        org.json.JSONArray rows = LocalStore.load(this);
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject r = rows.optJSONObject(i);
+            if (r == null) continue;
+            String p = r.optString("phase", "DONE");
+            if ("CREATE".equals(p) || "MOVE".equals(p) || "SPLIT".equals(p) || "STAMP".equals(p)) return true;
+        }
+        return false;
     }
 
     /** Max decimal places a token allows: -1 for Minima or an unknown token (no clamp). */

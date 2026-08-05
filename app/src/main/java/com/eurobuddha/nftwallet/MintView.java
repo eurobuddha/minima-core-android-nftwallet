@@ -36,14 +36,29 @@ public class MintView extends BaseView {
     /** Base64 budget for embedded NFT art in token metadata (the family's proven wallet-icon size). */
     private static final int ARTIMAGE_BUDGET = 6000;
 
+    /** Per-item embedded image budget for State NFT coins — a transfer carries the image twice
+     *  (input proof + recreated output state), so 8000 b64 chars keeps it under the 64 KB TxPoW cap. */
+    private static final int STATE_IMG_BUDGET = 8000;
+
     /** Keys the wallet writes itself — a custom metadata pair may not overwrite them. */
     private static final java.util.Set<String> RESERVED_META = new java.util.HashSet<>(java.util.Arrays.asList(
             "name", "url", "description", "ticker", "webvalidate", "external_url", "owner", "nft", "icon"));
 
-    private enum Screen { HUB, TOKEN, NFT }
+    private enum Screen { HUB, TOKEN, NFT, COLLECTION, PROGRESS }
 
     private final LinearLayout container;
     private Screen screen = Screen.HUB;
+    /** LocalStore row id shown by the PROGRESS screen. */
+    private long progressRowId = -1;
+
+    // ---- collection form ----
+    private LinearLayout colForm;
+    private EditText cName, cSize, cDesc, cBase, cExt, cIconUrl, cExtUrl, cWebv;
+    private TextView cStatus, cModeEmbed, cModeUrl, cImagesNote;
+    private LinearLayout cUrlBlock, cImagesBlock, cImageSlots;
+    private boolean colEmbedMode = true;
+    /** Per-item base64 images, key = item index 1..size. */
+    private final java.util.HashMap<Integer, String> colImages = new java.util.HashMap<>();
 
     // ---- token form (built once, values persist across re-renders) ----
     private LinearLayout tokenForm;
@@ -70,10 +85,17 @@ public class MintView extends BaseView {
     public void refresh() {
         container.removeAllViews();
         switch (screen) {
-            case TOKEN: container.addView(tokenForm()); break;
-            case NFT:   container.addView(nftForm());   break;
-            default:    renderHub();
+            case TOKEN:      container.addView(tokenForm()); break;
+            case NFT:        container.addView(nftForm());   break;
+            case COLLECTION: container.addView(collectionForm()); break;
+            case PROGRESS:   renderProgress(); break;
+            default:         renderHub();
         }
+    }
+
+    /** Engine progress: refresh only the passive screens — never yank focus from an open form. */
+    public void onEngineTick() {
+        if (screen == Screen.PROGRESS || screen == Screen.HUB) refresh();
     }
 
     // ===================== HUB =====================
@@ -87,7 +109,68 @@ public class MintView extends BaseView {
                 false, v -> { screen = Screen.NFT; refresh(); }));
         container.addView(hubCard("State NFT collection",
                 "One tokenid, 2–20 unique items. Per-item identity sealed in coin state — immutable even to you.",
-                true, v -> Toast.makeText(act, "Collection minting lands in the next build step.", Toast.LENGTH_SHORT).show()));
+                true, v -> { screen = Screen.COLLECTION; refresh(); }));
+
+        // resumable collections list
+        org.json.JSONArray rows = LocalStore.load(act);
+        if (rows.length() > 0) {
+            TextView lbl = new TextView(act);
+            lbl.setText("COLLECTIONS");
+            lbl.setTextColor(Design.dim());
+            lbl.setTextSize(11f);
+            lbl.setLetterSpacing(0.1f);
+            lbl.setPadding(0, dp(10), 0, dp(6));
+            container.addView(lbl);
+            for (int i = 0; i < rows.length(); i++) {
+                JSONObject row = rows.optJSONObject(i);
+                if (row != null) container.addView(collectionRow(row));
+            }
+        }
+    }
+
+    private View collectionRow(final JSONObject row) {
+        LinearLayout r = new LinearLayout(act);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(dp(12), dp(10), dp(12), dp(10));
+        r.setBackgroundColor(Design.surface());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(6);
+        r.setLayoutParams(lp);
+
+        LinearLayout col = new LinearLayout(act);
+        col.setOrientation(LinearLayout.VERTICAL);
+        TextView n = new TextView(act);
+        n.setText(row.optString("name", "Collection") + "  ·  " + row.optInt("size") + " items");
+        n.setTextColor(Design.text());
+        n.setTextSize(13f);
+        n.setTypeface(Design.typefaceBold());
+        col.addView(n);
+        String err = row.optString("error", "");
+        if (!err.isEmpty()) {
+            TextView e = new TextView(act);
+            e.setText(err);
+            e.setTextColor(Design.red());
+            e.setTextSize(10f);
+            e.setMaxLines(1);
+            e.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            col.addView(e);
+        }
+        r.addView(col, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        String phase = row.optString("phase", "?");
+        TextView p = new TextView(act);
+        p.setText(phase);
+        p.setTextSize(10f);
+        p.setLetterSpacing(0.08f);
+        p.setTypeface(Design.typefaceBold());
+        p.setTextColor("DONE".equals(phase) ? Design.success()
+                : "NEEDIMAGES".equals(phase) || !err.isEmpty() ? Design.red() : Design.accent());
+        r.addView(p);
+
+        r.setOnClickListener(v -> { progressRowId = row.optLong("id", -1); screen = Screen.PROGRESS; refresh(); });
+        return r;
     }
 
     private View hubCard(String title, String blurb, boolean accent, View.OnClickListener click) {
@@ -491,6 +574,435 @@ public class MintView extends BaseView {
                 runMint(cmd.toString(), nStatus, "NFT");
             }
         });
+    }
+
+    // ===================== STATE NFT COLLECTION =====================
+
+    private View collectionForm() {
+        if (colForm != null) return detachedForReuse(colForm);
+        colForm = new LinearLayout(act);
+        colForm.setOrientation(LinearLayout.VERTICAL);
+
+        colForm.addView(backRow("New State NFT collection"));
+
+        TextView intro = new TextView(act);
+        intro.setText("A locked edition: one tokenid, each coin carrying a sealed identity. Once an "
+                + "item is stamped, nobody — you included — can alter it.");
+        intro.setTextColor(Design.dim());
+        intro.setTextSize(12f);
+        colForm.addView(intro);
+
+        cName = addField(colForm, "Collection name *", "SolarPunks", InputType.TYPE_CLASS_TEXT);
+        LinearLayout duo = new LinearLayout(act);
+        duo.setOrientation(LinearLayout.HORIZONTAL);
+        colForm.addView(duo);
+        cSize = addWeightedField(duo, "Items (2–20) *", "5", InputType.TYPE_CLASS_NUMBER, 1f);
+        cExt = addWeightedField(duo, "Extension (url mode)", ".png", InputType.TYPE_CLASS_TEXT, 1.4f);
+        cDesc = addField(colForm, "Description", "What is this collection?", InputType.TYPE_CLASS_TEXT);
+
+        // mode segment
+        TextView modeLbl = new TextView(act);
+        modeLbl.setText("Item images");
+        modeLbl.setTextColor(Design.dim());
+        modeLbl.setTextSize(12f);
+        modeLbl.setPadding(0, dp(10), 0, dp(4));
+        colForm.addView(modeLbl);
+        LinearLayout seg = new LinearLayout(act);
+        seg.setOrientation(LinearLayout.HORIZONTAL);
+        cModeEmbed = segBtn("EMBED ON-CHAIN", v -> setColMode(true));
+        cModeUrl = segBtn("URL BASE + INDEX", v -> setColMode(false));
+        seg.addView(cModeEmbed, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        seg.addView(cModeUrl, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        colForm.addView(seg);
+
+        cUrlBlock = new LinearLayout(act);
+        cUrlBlock.setOrientation(LinearLayout.VERTICAL);
+        colForm.addView(cUrlBlock);
+        cBase = addField(cUrlBlock, "Image base URL (item = base + index + ext)", "https://mysite.com/nft/", InputType.TYPE_TEXT_VARIATION_URI);
+
+        cImagesBlock = new LinearLayout(act);
+        cImagesBlock.setOrientation(LinearLayout.VERTICAL);
+        colForm.addView(cImagesBlock);
+        cImagesNote = new TextView(act);
+        cImagesNote.setTextColor(Design.dim());
+        cImagesNote.setTextSize(11f);
+        cImagesNote.setPadding(0, dp(8), 0, dp(4));
+        cImagesNote.setText("Each item's image is compressed to ≤" + STATE_IMG_BUDGET
+                + " base64 chars and sealed into its coin. Set the item count, then pick each image.");
+        cImagesBlock.addView(cImagesNote);
+        cImageSlots = new LinearLayout(act);
+        cImageSlots.setOrientation(LinearLayout.VERTICAL);
+        cImagesBlock.addView(cImageSlots);
+        TextView buildSlots = new TextView(act);
+        buildSlots.setText("⟳ Build image slots from the item count");
+        buildSlots.setTextColor(Design.accent());
+        buildSlots.setTextSize(12f);
+        buildSlots.setPadding(0, dp(4), 0, dp(4));
+        buildSlots.setOnClickListener(v -> buildImageSlots());
+        cImagesBlock.addView(buildSlots);
+
+        cIconUrl = addField(colForm, "Collection icon URL (optional)", "https://…  (or leave empty)", InputType.TYPE_TEXT_VARIATION_URI);
+        cExtUrl = addField(colForm, "External URL (optional)", "https://…", InputType.TYPE_TEXT_VARIATION_URI);
+        cWebv = addField(colForm, "Web validation URL (optional)", "https://…/collection.txt", InputType.TYPE_TEXT_VARIATION_URI);
+
+        colForm.addView(primaryButton("Review & start mint", v -> onReviewCollection()));
+        cStatus = statusLine();
+        colForm.addView(cStatus);
+
+        setColMode(true);
+        return colForm;
+    }
+
+    private void setColMode(boolean embed) {
+        colEmbedMode = embed;
+        cModeEmbed.setTextColor(embed ? Design.onAccent() : Design.dim());
+        cModeEmbed.setBackgroundColor(embed ? Design.accent() : Design.surface2());
+        cModeUrl.setTextColor(!embed ? Design.onAccent() : Design.dim());
+        cModeUrl.setBackgroundColor(!embed ? Design.accent() : Design.surface2());
+        cUrlBlock.setVisibility(embed ? View.GONE : View.VISIBLE);
+        cImagesBlock.setVisibility(embed ? View.VISIBLE : View.GONE);
+    }
+
+    private int parsedSize() {
+        try { return Integer.parseInt(cSize.getText().toString().trim()); }
+        catch (Exception e) { return 0; }
+    }
+
+    private void buildImageSlots() {
+        int size = parsedSize();
+        cImageSlots.removeAllViews();
+        if (size < 2 || size > 20) {
+            status(cStatus, "Items must be 2–20 before building slots.", false);
+            return;
+        }
+        cStatus.setVisibility(View.GONE);
+        for (int i = 1; i <= size; i++) {
+            final int idx = i;
+            LinearLayout r = new LinearLayout(act);
+            r.setOrientation(LinearLayout.HORIZONTAL);
+            r.setGravity(Gravity.CENTER_VERTICAL);
+            r.setPadding(dp(8), dp(6), dp(8), dp(6));
+            r.setBackgroundColor(Design.surface());
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = dp(4);
+            r.setLayoutParams(lp);
+            TextView n = new TextView(act);
+            n.setText("Item #" + idx);
+            n.setTextColor(Design.text());
+            n.setTextSize(13f);
+            r.addView(n, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            final TextView state = new TextView(act);
+            boolean have = colImages.containsKey(idx);
+            state.setText(have ? "✓ " + colImages.get(idx).length() + " b64" : "PICK IMAGE");
+            state.setTextColor(have ? Design.success() : Design.accent());
+            state.setTextSize(11f);
+            state.setLetterSpacing(0.05f);
+            r.addView(state);
+            r.setOnClickListener(v -> pickCollectionImage(idx, state));
+            cImageSlots.addView(r);
+        }
+    }
+
+    private void pickCollectionImage(final int idx, final TextView state) {
+        act.pickImage(uri -> {
+            state.setText("compressing…");
+            new Thread(() -> {
+                String b64;
+                try { b64 = ImageTools.compressUri(act, uri, STATE_IMG_BUDGET); }
+                catch (Exception e) { b64 = ""; }
+                final String result = b64;
+                act.runOnUiThread(() -> {
+                    if (result.isEmpty()) {
+                        state.setText("failed — try another");
+                        state.setTextColor(Design.red());
+                    } else {
+                        colImages.put(idx, result);
+                        state.setText("✓ " + result.length() + " b64");
+                        state.setTextColor(Design.success());
+                    }
+                });
+            }).start();
+        });
+    }
+
+    private void onReviewCollection() {
+        final String name = cName.getText().toString().trim();
+        String err = badValue(name, true);
+        if (err != null) { status(cStatus, "Name: " + err, false); return; }
+
+        final int size = parsedSize();
+        if (size < 2 || size > 20) { status(cStatus, "Items must be between 2 and 20.", false); return; }
+
+        final String desc = cDesc.getText().toString().trim();
+        if ((err = badValue(desc, false)) != null) { status(cStatus, "Description: " + err, false); return; }
+
+        final String base = cBase.getText().toString().trim();
+        final String ext = cExt.getText().toString().trim().isEmpty() ? ".png" : cExt.getText().toString().trim();
+        if (!colEmbedMode) {
+            if (base.isEmpty() || badUrl(base)) { status(cStatus, "URL mode needs a plain https base URL.", false); return; }
+            if (badValue(ext, false) != null || ext.contains(" ")) { status(cStatus, "Bad extension.", false); return; }
+        } else {
+            for (int i = 1; i <= size; i++) {
+                if (!colImages.containsKey(i)) {
+                    status(cStatus, "Item #" + i + " has no image yet — build slots and pick all "
+                            + size + " images first.", false);
+                    return;
+                }
+            }
+        }
+        final String iconUrl = cIconUrl.getText().toString().trim();
+        if (!iconUrl.isEmpty() && badUrl(iconUrl)) { status(cStatus, "Icon URL must be a plain http(s) link.", false); return; }
+        final String extUrl = cExtUrl.getText().toString().trim();
+        if (!extUrl.isEmpty() && badUrl(extUrl)) { status(cStatus, "External URL must be a plain http(s) link.", false); return; }
+        final String webv = cWebv.getText().toString().trim();
+        if (!webv.isEmpty() && badUrl(webv)) { status(cStatus, "Web validation must be a plain https link.", false); return; }
+        cStatus.setVisibility(View.GONE);
+
+        LinearLayout body = confirmBody();
+        addConfirmRow(body, "Collection", name);
+        addConfirmRow(body, "Items", String.valueOf(size));
+        addConfirmRow(body, "Mode", colEmbedMode ? "embedded on-chain images" : "URL base + index");
+        if (!colEmbedMode) addConfirmRow(body, "Images at", base + "<i>" + ext);
+        addConfirmRow(body, "Description", desc.isEmpty() ? "Not set" : desc);
+        addConfirmRow(body, "Web validation", webv.isEmpty() ? "None set" : webv);
+        addConfirmRow(body, "Contract", "SAMESTATE locked edition — immutable once stamped");
+        TextView pipeline = new TextView(act);
+        pipeline.setText("The mint runs in phases (CREATE → MOVE → SPLIT → STAMP), one transaction "
+                + "per step, driven by new blocks. It is resumable — you can close the app.");
+        pipeline.setTextColor(Design.dim());
+        pipeline.setTextSize(11f);
+        pipeline.setPadding(0, dp(8), 0, 0);
+        body.addView(pipeline);
+
+        showConfirm("Start minting this collection?", body, "Start mint →", () ->
+                startCollection(name, size, desc, base, ext, iconUrl, extUrl, webv));
+    }
+
+    /** Fetch the creator identity, persist the LocalStore row, kick the engine, show progress. */
+    private void startCollection(final String name, final int size, final String desc,
+                                 final String base, final String ext, final String iconUrl,
+                                 final String extUrl, final String webv) {
+        status(cStatus, "Fetching creator identity…", true);
+        act.node().cmd("getaddress", new NodeApi.Cb() {
+            @Override public void onResult(JSONObject json) {
+                JSONObject r = json.optJSONObject("response");
+                String pk = r == null ? "" : r.optString("publickey", "");
+                String addr = r == null ? "" : r.optString("address", "");
+                if (pk.isEmpty() || addr.isEmpty()) {
+                    status(cStatus, "Could not get a creator key from the node.", false);
+                    return;
+                }
+                StateNft.Meta m = new StateNft.Meta();
+                m.localId = LocalStore.nextId(act);
+                m.name = name;
+                m.description = desc;
+                m.mode = colEmbedMode ? "embed" : "url";
+                m.size = size;
+                m.base = colEmbedMode ? "" : base;
+                m.ext = ext;
+                m.icon = iconUrl;
+                m.externalUrl = extUrl;
+                m.webvalidate = webv;
+                m.creatorPk = pk;
+                m.creatorAddr = addr;
+                m.tokenid = "";
+                m.phase = "CREATE";
+                m.error = "";
+
+                org.json.JSONArray items = new org.json.JSONArray();
+                for (int i = 1; i <= size; i++) {
+                    JSONObject it = new JSONObject();
+                    try {
+                        it.put("idx", i);
+                        it.put("image", colEmbedMode ? colImages.get(i) : "");
+                    } catch (Exception ignored) {}
+                    items.put(it);
+                }
+                JSONObject row = MintEngine.rowFromMeta(m, items);
+                LocalStore.upsert(act, row);
+                colImages.clear();
+                colForm = null;                    // fresh form next time
+                progressRowId = m.localId;
+                screen = Screen.PROGRESS;
+                refresh();
+                act.mintEngineTick();
+            }
+            @Override public void onError(String message) {
+                if (NodeApi.ERR_NOT_ENABLED.equals(message)) message = "Enable this wallet in Minima Core → Apps first.";
+                status(cStatus, "Failed: " + message, false);
+            }
+        });
+    }
+
+    // ===================== PROGRESS =====================
+
+    private void renderProgress() {
+        JSONObject row = LocalStore.findById(act, progressRowId);
+        if (row == null) { screen = Screen.HUB; renderHub(); return; }
+
+        TextView back = new TextView(act);
+        back.setText("‹  " + row.optString("name", "Collection"));
+        back.setTextColor(Design.heading());
+        back.setTextSize(16f);
+        back.setTypeface(Design.typefaceBold());
+        back.setPadding(0, 0, 0, dp(8));
+        back.setOnClickListener(v -> { screen = Screen.HUB; refresh(); });
+        container.addView(back);
+
+        // phase chips
+        String phase = row.optString("phase", "?");
+        LinearLayout chips = new LinearLayout(act);
+        chips.setOrientation(LinearLayout.HORIZONTAL);
+        String[] phases = {"CREATE", "MOVE", "SPLIT", "STAMP", "DONE"};
+        int cur = java.util.Arrays.asList(phases).indexOf(phase);
+        for (int i = 0; i < phases.length; i++) {
+            TextView c = new TextView(act);
+            c.setText(phases[i]);
+            c.setTextSize(9f);
+            c.setLetterSpacing(0.06f);
+            c.setTypeface(Design.typefaceBold());
+            c.setPadding(dp(8), dp(5), dp(8), dp(5));
+            boolean done = cur > i || "DONE".equals(phase);
+            boolean active = cur == i && !"DONE".equals(phase);
+            c.setTextColor(active ? Design.onAccent() : done ? Design.success() : Design.dim());
+            c.setBackgroundColor(active ? Design.accent() : Design.surface());
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            if (i > 0) clp.leftMargin = dp(4);
+            c.setLayoutParams(clp);
+            chips.addView(c);
+        }
+        container.addView(chips);
+
+        if ("NEEDIMAGES".equals(phase)) {
+            TextView warn = new TextView(act);
+            warn.setText("Stamping paused — an item is missing its image. Pick it below; stamping is "
+                    + "irreversible, so the engine refuses to stamp an imageless item.");
+            warn.setTextColor(Design.amber());
+            warn.setTextSize(12f);
+            warn.setPadding(0, dp(8), 0, 0);
+            container.addView(warn);
+        }
+        String err = row.optString("error", "");
+        if (!err.isEmpty() && !"NEEDIMAGES".equals(phase)) {
+            TextView e = new TextView(act);
+            e.setText(err);
+            e.setTextColor(Design.red());
+            e.setTextSize(11f);
+            e.setPadding(0, dp(6), 0, 0);
+            container.addView(e);
+        }
+        String engineMsg = act.mintStatus();
+        if (!engineMsg.isEmpty()) {
+            TextView s = new TextView(act);
+            s.setText("engine: " + engineMsg);
+            s.setTextColor(Design.dim());
+            s.setTextSize(10f);
+            s.setPadding(0, dp(4), 0, 0);
+            container.addView(s);
+        }
+
+        // token id, once known
+        String tokenid = row.optString("tokenid", "");
+        if (!tokenid.isEmpty()) {
+            TextView tid = new TextView(act);
+            tid.setText(Util.shorten(tokenid) + "  ·  tap to copy");
+            tid.setTextColor(Design.dim());
+            tid.setTextSize(11f);
+            tid.setTypeface(android.graphics.Typeface.MONOSPACE);
+            tid.setPadding(0, dp(6), 0, 0);
+            tid.setOnClickListener(v -> CoinDetailDialog.copy(act, "Token ID", tokenid));
+            container.addView(tid);
+        }
+
+        // item rows
+        org.json.JSONArray items = MintEngine.localItems(row);
+        TextView lbl = new TextView(act);
+        lbl.setText("ITEMS");
+        lbl.setTextColor(Design.dim());
+        lbl.setTextSize(11f);
+        lbl.setLetterSpacing(0.1f);
+        lbl.setPadding(0, dp(12), 0, dp(4));
+        container.addView(lbl);
+        for (int i = 0; i < items.length(); i++) {
+            final JSONObject it = items.optJSONObject(i);
+            if (it == null) continue;
+            final int idx = it.optInt("idx");
+            LinearLayout r = new LinearLayout(act);
+            r.setOrientation(LinearLayout.HORIZONTAL);
+            r.setGravity(Gravity.CENTER_VERTICAL);
+            r.setPadding(dp(10), dp(8), dp(10), dp(8));
+            r.setBackgroundColor(Design.surface());
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.bottomMargin = dp(3);
+            r.setLayoutParams(lp);
+            TextView n = new TextView(act);
+            String coinid = it.optString("coinid", "");
+            n.setText("#" + idx + (coinid.isEmpty() ? "" : "  ·  " + Util.shorten(coinid)));
+            n.setTextColor(Design.text());
+            n.setTextSize(12f);
+            n.setTypeface(android.graphics.Typeface.MONOSPACE);
+            r.addView(n, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            final TextView st = new TextView(act);
+            boolean needImage = "embed".equals(row.optString("mode")) && it.optString("image", "").isEmpty();
+            st.setText(!coinid.isEmpty() ? "✓ STAMPED" : needImage ? "PICK IMAGE" : "queued");
+            st.setTextSize(10f);
+            st.setLetterSpacing(0.06f);
+            st.setTextColor(!coinid.isEmpty() ? Design.success() : needImage ? Design.accent() : Design.dim());
+            r.addView(st);
+            if (needImage) {
+                r.setOnClickListener(v -> act.pickImage(uri -> {
+                    st.setText("compressing…");
+                    new Thread(() -> {
+                        String b64;
+                        try { b64 = ImageTools.compressUri(act, uri, STATE_IMG_BUDGET); }
+                        catch (Exception e) { b64 = ""; }
+                        final String result = b64;
+                        act.runOnUiThread(() -> {
+                            if (result.isEmpty()) { st.setText("failed — retry"); return; }
+                            try { it.put("image", result); } catch (Exception ignored) {}
+                            JSONObject fresh = LocalStore.findById(act, progressRowId);
+                            if (fresh != null) {
+                                org.json.JSONArray fitems = MintEngine.localItems(fresh);
+                                for (int j = 0; j < fitems.length(); j++) {
+                                    JSONObject fit = fitems.optJSONObject(j);
+                                    if (fit != null && fit.optInt("idx") == idx) {
+                                        try { fit.put("image", result); } catch (Exception ignored) {}
+                                    }
+                                }
+                                try {
+                                    fresh.put("items", fitems);
+                                    if ("NEEDIMAGES".equals(fresh.optString("phase"))) {
+                                        fresh.put("phase", "STAMP");
+                                        fresh.put("error", "");
+                                    }
+                                } catch (Exception ignored) {}
+                                LocalStore.upsert(act, fresh);
+                            }
+                            refresh();
+                            act.mintEngineTick();
+                        });
+                    }).start();
+                }));
+            }
+            container.addView(r);
+        }
+
+        if (!"DONE".equals(phase)) {
+            container.addView(primaryButton("Resume now", v -> {
+                Toast.makeText(act, "Nudging the mint engine…", Toast.LENGTH_SHORT).show();
+                act.mintEngineTick();
+            }));
+        } else {
+            TextView doneNote = new TextView(act);
+            doneNote.setText("✓ Collection fully minted. The items live in your Gallery and Balances.");
+            doneNote.setTextColor(Design.success());
+            doneNote.setTextSize(13f);
+            doneNote.setPadding(0, dp(14), 0, 0);
+            container.addView(doneNote);
+        }
     }
 
     // ===================== shared =====================

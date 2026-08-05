@@ -103,10 +103,66 @@ public final class CoinDetailDialog {
             }
         }
 
-        new androidx.appcompat.app.AlertDialog.Builder(act)
+        // StateNFT unit at one of my addresses → offer Transfer / Bury (detected via the token script).
+        final LinearLayout actions = new LinearLayout(act);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setPadding(0, dp(act, 12), 0, 0);
+        box.addView(actions);
+
+        final androidx.appcompat.app.AlertDialog dlg = new androidx.appcompat.app.AlertDialog.Builder(act)
                 .setView(sv)
                 .setPositiveButton("Close", null)
                 .show();
+
+        if (!Util.isMinima(c.tokenid) && !c.state.isEmpty() && isMine(act, c)) {
+            act.node().cmd("tokens tokenid:" + c.tokenid, new NodeApi.Cb() {
+                @Override public void onResult(org.json.JSONObject json) {
+                    Object resp = json.opt("response");
+                    org.json.JSONObject tok = resp instanceof org.json.JSONObject
+                            ? (org.json.JSONObject) resp
+                            : (resp instanceof org.json.JSONArray && ((org.json.JSONArray) resp).length() > 0
+                                ? ((org.json.JSONArray) resp).optJSONObject(0) : null);
+                    if (tok == null) return;
+                    if (!StateNft.isStateNftScript(tok.optString("script", ""))) return;
+                    // the tokens-command entry IS the token record (name at top level)
+                    StateNft.Meta meta = StateNft.parseMeta(c.tokenid, tok);
+                    String collection = meta == null || meta.name == null || meta.name.isEmpty()
+                            ? c.tokenName : meta.name;
+                    String idx = StateNft.stamped(c.raw);
+                    String display = collection + (idx != null ? " #" + idx : "");
+                    actions.addView(actionBtn(act, "Transfer", false,
+                            v -> { dlg.dismiss(); StateNftActions.transferDialog(act, c.tokenid, display, c.raw); }));
+                    actions.addView(actionBtn(act, "Bury", true,
+                            v -> { dlg.dismiss(); StateNftActions.buryDialog(act, c.tokenid, collection, display, c.raw); }));
+                }
+                @Override public void onError(String message) { /* no actions offered */ }
+            });
+        }
+    }
+
+    private static boolean isMine(MainActivity act, Coin c) {
+        for (String[] a : act.myAddresses()) {
+            if (c.address.equals(a[0]) || c.address.equals(a[1])
+                    || (c.miniaddress != null && c.miniaddress.equals(a[1]))) return true;
+        }
+        return false;
+    }
+
+    private static android.widget.TextView actionBtn(MainActivity act, String label, boolean danger,
+                                                     android.view.View.OnClickListener click) {
+        android.widget.TextView b = new android.widget.TextView(act);
+        b.setText(label);
+        b.setTextSize(13f);
+        b.setTypeface(Design.typefaceBold());
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(0, dp(act, 10), 0, dp(act, 10));
+        b.setTextColor(danger ? Design.red() : Design.onAccent());
+        b.setBackgroundColor(danger ? Design.redSoft() : Design.accent());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        if (danger) lp.leftMargin = dp(act, 8);
+        b.setLayoutParams(lp);
+        b.setOnClickListener(click);
+        return b;
     }
 
     /** Label + monospace value row; tapping copies the full value to the clipboard. */

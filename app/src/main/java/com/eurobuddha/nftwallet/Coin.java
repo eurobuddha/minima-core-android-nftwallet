@@ -26,9 +26,12 @@ public class Coin {
     public boolean spent = false;
     /** State variables carried by the coin: each entry is {port, data}, in node order. */
     public final List<String[]> state = new ArrayList<>();
+    /** The node's raw coin JSON — StateNFT transfer/bury replay the state from this verbatim. */
+    public JSONObject raw;
 
     public static Coin from(JSONObject c) {
         Coin x = new Coin();
+        x.raw = c;
         x.coinid      = c.optString("coinid", "");
         x.address     = c.optString("address", "");
         x.miniaddress = c.optString("miniaddress", "");

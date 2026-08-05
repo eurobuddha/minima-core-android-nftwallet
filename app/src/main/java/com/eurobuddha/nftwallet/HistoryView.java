@@ -1,13 +1,9 @@
 package com.eurobuddha.nftwallet;
 
-import android.content.ClipData;
-import android.content.ClipboardManager;
-import android.content.Context;
 import android.graphics.Typeface;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -282,13 +278,14 @@ public class HistoryView extends BaseView {
     private void showDetail(NodeTx n) {
         LinearLayout box = new LinearLayout(act);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(20), dp(12), dp(20), dp(12));
         kv(box, "Direction", n.direction);
         kv(box, "Amount", (n.incoming ? "+" : "sent".equals(n.direction) ? "−" : "") + Util.tidyAmount(n.amount) + " " + n.tokenName);
         kv(box, "Block", String.valueOf(n.block));
         kv(box, "Time", new SimpleDateFormat("dd MMM yyyy  HH:mm:ss", Locale.ENGLISH).format(new Date(n.timemilli)));
         copyRow(box, "Txpow id", n.txpowid);
-        if (n.counterparty != null && !n.counterparty.isEmpty()) copyRow(box, n.incoming ? "From" : "To", n.counterparty);
+        if (n.counterparty != null && !n.counterparty.isEmpty()) {
+            addressRow(box, n.incoming ? "From" : "To", n.counterparty);
+        }
         kv(box, "Per-token effect", prettyDeltas(n.deltas));
         addBreakdown(box, "Inputs", n.inputs);
         addBreakdown(box, "Outputs", n.outputs);
@@ -306,13 +303,14 @@ public class HistoryView extends BaseView {
     }
 
     private void copyRow(LinearLayout p, String k, final String v) {
+        TextView l = new TextView(act);
+        l.setText(k);
+        l.setTextColor(Design.dim()); l.setTextSize(11.5f); l.setPadding(0, dp(7), 0, dp(1));
+        p.addView(l);
         TextView t = new TextView(act);
-        t.setText(k + ":  " + v + "   (tap to copy)");
-        t.setTextColor(Design.dim()); t.setTextSize(12f); t.setTypeface(Typeface.MONOSPACE); t.setPadding(0, dp(4), 0, dp(4));
-        t.setOnClickListener(view -> {
-            ((ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText(k, v));
-            Toast.makeText(act, "Copied", Toast.LENGTH_SHORT).show();
-        });
+        t.setText(v);
+        t.setTextColor(Design.text()); t.setTextSize(11f); t.setTypeface(Typeface.MONOSPACE);
+        t.setOnClickListener(view -> CoinDetailDialog.copy(act, k, v));
         p.addView(t);
     }
 
@@ -322,19 +320,98 @@ public class HistoryView extends BaseView {
             if (a.length() == 0) return;
             TextView h = new TextView(act);
             h.setText(title);
-            h.setTextColor(Design.accent()); h.setTextSize(12f); h.setTypeface(Typeface.DEFAULT_BOLD); h.setPadding(0, dp(8), 0, dp(2));
+            h.setTextColor(Design.accent()); h.setTextSize(12f); h.setTypeface(Typeface.DEFAULT_BOLD);
+            h.setPadding(0, dp(14), 0, dp(2));
             p.addView(h);
             for (int i = 0; i < a.length(); i++) {
                 JSONObject c = a.optJSONObject(i);
                 if (c == null) continue;
                 String tid = c.optString("tokenid", "0x00");
                 String tok = Util.isMinima(tid) ? "Minima" : Util.shorten(tid);
-                TextView t = new TextView(act);
-                t.setText("• " + Util.tidyAmount(c.optString("amount", "")) + " " + tok + "  →  " + Util.shorten(c.optString("addr", "")));
-                t.setTextColor(Design.dim()); t.setTextSize(12f); t.setPadding(dp(6), dp(1), 0, dp(1));
-                p.addView(t);
+                addressRow(p, Util.tidyAmount(c.optString("amount", "")) + "  " + tok,
+                        c.optString("addr", ""));
             }
         } catch (Exception ignored) {}
+    }
+
+    /**
+     * One address, in full, tap-to-copy, with an answer to the only question that matters about a
+     * change output: is it mine?
+     *
+     * Truncating these made the detail useless — you could not read where your change went, let
+     * alone check it. The local address pool answers instantly for the common case; anything it
+     * doesn't recognise is put to the node, whose {@code checkaddress relevant} flag is the
+     * authoritative answer (the local pool is refreshed rarely and misses newaddress-minted ones).
+     */
+    private void addressRow(LinearLayout p, String label, final String addr) {
+        if (addr == null || addr.isEmpty()) return;
+
+        TextView l = new TextView(act);
+        l.setText(label);
+        l.setTextColor(Design.dim());
+        l.setTextSize(11.5f);
+        l.setPadding(0, dp(7), 0, dp(1));
+        p.addView(l);
+
+        LinearLayout row = new LinearLayout(act);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+
+        TextView a = new TextView(act);
+        a.setText(addr);                       // FULL — never shortened
+        a.setTextColor(Design.text());
+        a.setTextSize(11f);
+        a.setTypeface(Typeface.MONOSPACE);
+        a.setOnClickListener(v -> CoinDetailDialog.copy(act, "Address", addr));
+        row.addView(a, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        final TextView badge = new TextView(act);
+        badge.setTextSize(9.5f);
+        badge.setTypeface(Design.typefaceBold());
+        badge.setLetterSpacing(0.06f);
+        badge.setPadding(dp(6), 0, 0, 0);
+        row.addView(badge);
+
+        p.addView(row);
+        markOwnership(addr, badge);
+    }
+
+    /** Cached across sheets — the same change address recurs constantly. */
+    private static final java.util.HashMap<String, Boolean> OWN_CACHE = new java.util.HashMap<>();
+
+    private void markOwnership(final String addr, final TextView badge) {
+        if (isMineLocally(addr)) { setBadge(badge, true, "YOURS"); return; }
+        Boolean cached = OWN_CACHE.get(addr);
+        if (cached != null) { setBadge(badge, cached, cached ? "YOURS" : "NOT YOURS"); return; }
+        if (!Util.isValidAddress(addr)) { badge.setText(""); return; }
+
+        badge.setText("checking…");
+        badge.setTextColor(Design.dim());
+        act.node().cmd("checkaddress address:" + addr, new NodeApi.Cb() {
+            @Override public void onResult(JSONObject json) {
+                JSONObject r = json.optJSONObject("response");
+                boolean mine = r != null && r.optBoolean("relevant", false);
+                OWN_CACHE.put(addr, mine);
+                setBadge(badge, mine, mine ? "YOURS" : "NOT YOURS");
+            }
+            @Override public void onError(String message) {
+                // Say we don't know rather than implying it isn't yours.
+                badge.setText("UNVERIFIED");
+                badge.setTextColor(Design.amber());
+            }
+        });
+    }
+
+    private void setBadge(TextView badge, boolean mine, String text) {
+        badge.setText(text);
+        badge.setTextColor(mine ? Design.success() : Design.dim());
+    }
+
+    /** The wallet's known address pool, in either 0x or Mx form. */
+    private boolean isMineLocally(String addr) {
+        for (String[] pair : act.myAddresses()) {
+            if (addr.equals(pair[0]) || addr.equals(pair[1])) return true;
+        }
+        return false;
     }
 
     private String prettyDeltas(String json) {

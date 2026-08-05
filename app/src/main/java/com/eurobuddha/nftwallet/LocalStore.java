@@ -7,7 +7,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public final class LocalStore {
-    private static final String PREF = "statenft_suite";
+    private static final String PREF = "nftwallet_statenft";
     private static final String KEY_COLLECTIONS = "collections";
     private static final String KEY_PENDING = "pending";
 

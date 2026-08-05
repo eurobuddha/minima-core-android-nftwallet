@@ -16,7 +16,7 @@ import java.util.List;
  */
 public class DistributeJob {
 
-    private static final String PREFS = "utxo_distribute";
+    private static final String PREFS = "nftwallet_distribute";
     private static final String KEY = "job";
 
     public String tokenid;

@@ -50,7 +50,7 @@ public final class WebValidate {
             c.setConnectTimeout(8000);
             c.setReadTimeout(10000);
             c.setInstanceFollowRedirects(true);
-            c.setRequestProperty("User-Agent", "utxoWallet");
+            c.setRequestProperty("User-Agent", "NFTWallet");
             if (c.getResponseCode() != 200) return false;
             String body;
             try (InputStream in = c.getInputStream(); ByteArrayOutputStream bos = new ByteArrayOutputStream()) {

@@ -63,6 +63,10 @@ public class MainActivity extends AppCompatActivity {
     private androidx.activity.result.ActivityResultLauncher<com.journeyapps.barcodescanner.ScanOptions> scanLauncher;
     private java.util.function.Consumer<String> scanConsumer;
 
+    // ----- image pick (NFT art). Registered in onCreate; one consumer at a time. -----
+    private androidx.activity.result.ActivityResultLauncher<String> imageLauncher;
+    private java.util.function.Consumer<android.net.Uri> imageConsumer;
+
     // ----- wallet state -----
     private final List<Coin> coins = new ArrayList<>();
     private final Set<String> sendableIds = new HashSet<>();
@@ -116,6 +120,13 @@ public class MainActivity extends AppCompatActivity {
             java.util.function.Consumer<String> consumer = scanConsumer;
             scanConsumer = null;
             if (consumer != null && result.getContents() != null) consumer.accept(result.getContents());
+        });
+
+        imageLauncher = registerForActivityResult(
+                new androidx.activity.result.contract.ActivityResultContracts.GetContent(), uri -> {
+            java.util.function.Consumer<android.net.Uri> consumer = imageConsumer;
+            imageConsumer = null;
+            if (consumer != null && uri != null) consumer.accept(uri);
         });
 
         pairingBanner = findViewById(R.id.pairingBanner);
@@ -504,6 +515,16 @@ public class MainActivity extends AppCompatActivity {
     public void sendToken(String tokenid) {
         ((SendView) views[TAB_SEND]).preselectToken(tokenid);
         goToTab(TAB_SEND);
+    }
+
+    /** Open the system image picker; the consumer gets the chosen Uri (dropped on cancel). */
+    public void pickImage(java.util.function.Consumer<android.net.Uri> consumer) {
+        imageConsumer = consumer;
+        try { imageLauncher.launch("image/*"); }
+        catch (Exception e) {
+            imageConsumer = null;
+            Toast.makeText(this, "Could not open the image picker.", Toast.LENGTH_SHORT).show();
+        }
     }
 
     /** The currently visible tab index (ViewPager page). */

@@ -4,7 +4,6 @@ import android.view.Gravity;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
-import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.util.Set;
@@ -15,14 +14,9 @@ public final class SettingsDialog {
     private SettingsDialog() {}
 
     public static void show(final MainActivity act) {
-        final androidx.appcompat.app.AlertDialog[] dlgRef = new androidx.appcompat.app.AlertDialog[1];
-        ScrollView sv = new ScrollView(act);
-        LinearLayout box = new LinearLayout(act);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setBackgroundColor(Design.bg());
-        int pad = dp(act, 20);
-        box.setPadding(pad, dp(act, 12), pad, dp(act, 12));
-        sv.addView(box);
+        final android.app.Dialog[] dlgRef = new android.app.Dialog[1];
+        final Sheet sheet = Sheet.create(act, "Settings");
+        LinearLayout box = sheet.body();
 
         // ---- theme ----
         box.addView(section(act, "THEME"));
@@ -142,11 +136,8 @@ public final class SettingsDialog {
         a.setTextSize(12f);
         box.addView(a);
 
-        dlgRef[0] = new androidx.appcompat.app.AlertDialog.Builder(act)
-                .setTitle("Settings")
-                .setView(sv)
-                .setPositiveButton("Close", null)
-                .show();
+        sheet.action("Close", Sheet.Style.SECONDARY, null);
+        dlgRef[0] = sheet.show();
     }
 
     private static TextView section(MainActivity act, String label) {

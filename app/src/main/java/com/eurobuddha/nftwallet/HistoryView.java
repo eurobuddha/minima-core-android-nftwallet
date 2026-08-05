@@ -177,9 +177,10 @@ public class HistoryView extends BaseView {
 
     /** Share the (filtered) history as CSV or JSON via the system share sheet. */
     private void exportDialog() {
-        new AlertDialog.Builder(act)
-                .setTitle("Export history")
-                .setItems(new String[]{"CSV", "JSON"}, (d, which) -> shareExport(which == 0))
+        Sheet.create(act, "Export history")
+                .subtitle("Shares the rows currently shown, using the active filter.")
+                .action("CSV", Sheet.Style.SECONDARY, () -> shareExport(true))
+                .action("JSON", Sheet.Style.PRIMARY, () -> shareExport(false))
                 .show();
     }
 
@@ -291,9 +292,10 @@ public class HistoryView extends BaseView {
         kv(box, "Per-token effect", prettyDeltas(n.deltas));
         addBreakdown(box, "Inputs", n.inputs);
         addBreakdown(box, "Outputs", n.outputs);
-        ScrollView sv = new ScrollView(act);
-        sv.addView(box);
-        new AlertDialog.Builder(act).setTitle("Transaction").setView(sv).setPositiveButton("Close", null).show();
+        Sheet.create(act, "Transaction")
+                .body(box)
+                .action("Close", Sheet.Style.SECONDARY, null)
+                .show();
     }
 
     private void kv(LinearLayout p, String k, String v) {

@@ -348,12 +348,8 @@ public class GalleryView extends BaseView {
     // ===================== detail =====================
 
     private void showDetail(final GItem it) {
-        ScrollView sv = new ScrollView(act);
-        LinearLayout box = new LinearLayout(act);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setBackgroundColor(Design.bg());
-        box.setPadding(dp(18), dp(12), dp(18), dp(10));
-        sv.addView(box);
+        final Sheet sheet = Sheet.create(act, it.name);
+        LinearLayout box = sheet.body();
 
         // hero
         final ImageView hero = new ImageView(act);
@@ -372,13 +368,6 @@ public class GalleryView extends BaseView {
         hint.setGravity(Gravity.CENTER);
         hint.setPadding(0, dp(3), 0, dp(6));
         box.addView(hint);
-
-        TextView title = new TextView(act);
-        title.setText(it.name);
-        title.setTextColor(Design.heading());
-        title.setTextSize(18f);
-        title.setTypeface(Design.typefaceBold());
-        box.addView(title);
 
         // chips line
         StringBuilder chips = new StringBuilder();
@@ -417,19 +406,17 @@ public class GalleryView extends BaseView {
         if (it.externalUrl != null && !it.externalUrl.isEmpty()) linkRow(box, "External URL", it.externalUrl);
         if (it.webvalidate != null && !it.webvalidate.isEmpty()) linkRow(box, "Web validation", it.webvalidate);
 
-        androidx.appcompat.app.AlertDialog.Builder b = new androidx.appcompat.app.AlertDialog.Builder(act)
-                .setView(sv)
-                .setNegativeButton("Close", null);
-
         final boolean fav = favs().contains(it.favKey);
-        b.setNeutralButton(fav ? "♥ Unfavourite" : "♡ Favourite", (d, w) -> toggleFav(it.favKey));
+        sheet.action("Close", Sheet.Style.SECONDARY, null);
+        sheet.action(fav ? "♥ Unfavourite" : "♡ Favourite", Sheet.Style.SECONDARY,
+                () -> toggleFav(it.favKey));
 
         if (it.stateNft && it.coin != null) {
             final String display = it.name;
             final String collection = it.meta == null ? it.name : it.meta.name;
-            b.setPositiveButton("Transfer", (d, w) ->
+            sheet.action("Transfer", Sheet.Style.PRIMARY, () ->
                     StateNftActions.transferDialog(act, it.tokenid, display, it.coin.raw));
-            final androidx.appcompat.app.AlertDialog dlg = b.show();
+            final android.app.Dialog dlg = sheet.show();
             // Bury lives behind long-press on Transfer? No — add a dedicated row instead.
             TextView bury = new TextView(act);
             bury.setText("✝  Bury this item (irreversible)");
@@ -456,8 +443,8 @@ public class GalleryView extends BaseView {
             });
             box.addView(buryAll);
         } else {
-            b.setPositiveButton("Send", (d, w) -> act.sendToken(it.tokenid));
-            b.show();
+            sheet.action("Send", Sheet.Style.PRIMARY, () -> act.sendToken(it.tokenid));
+            sheet.show();
         }
 
         // fire the web-validation check so the badge is fresh next open
@@ -473,8 +460,12 @@ public class GalleryView extends BaseView {
         iv.setBackgroundColor(0xFF000000);
         iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
         ImageLoader.loadFull(act, url, iv, R.drawable.ic_coin_placeholder);
-        androidx.appcompat.app.AlertDialog dlg =
-                new androidx.appcompat.app.AlertDialog.Builder(act).setView(iv).create();
+        final android.app.Dialog dlg = new android.app.Dialog(act);
+        dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        dlg.setContentView(iv);
+        if (dlg.getWindow() != null) {
+            dlg.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0xFF000000));
+        }
         iv.setOnClickListener(v -> dlg.dismiss());
         dlg.show();
     }

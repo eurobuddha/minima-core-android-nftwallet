@@ -58,11 +58,10 @@ public final class Util {
                     android.widget.Toast.LENGTH_LONG).show();
             return;
         }
-        new androidx.appcompat.app.AlertDialog.Builder(ctx)
-                .setTitle("Open this link?")
-                .setMessage(url + "\n\nThis address comes from the token's metadata, not from Minima.")
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Open", (d, w) -> {
+        Sheet.create(ctx, "Open this link?")
+                .subtitle(url + "\n\nThis address comes from the token's metadata, not from Minima.")
+                .action("Cancel", Sheet.Style.SECONDARY, null)
+                .action("Open", Sheet.Style.PRIMARY, () -> {
                     try {
                         ctx.startActivity(new android.content.Intent(
                                 android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)));

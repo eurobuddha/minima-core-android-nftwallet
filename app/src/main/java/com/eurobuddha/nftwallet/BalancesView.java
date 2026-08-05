@@ -275,12 +275,8 @@ public class BalancesView extends BaseView {
 
     /** Full-detail dialog for one token: large icon (tap → full-res), all metadata, and a Receive action. */
     private void showTokenDetail(TokenBalance b) {
-        android.widget.ScrollView sv = new android.widget.ScrollView(act);
-        LinearLayout box = new LinearLayout(act);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(20), dp(16), dp(20), dp(16));
-        box.setBackgroundColor(Design.bg());
-        sv.addView(box);
+        final Sheet sheetUi = Sheet.create(act, b.name + (b.isNft() ? "  ·  NFT" : ""));
+        LinearLayout box = sheetUi.body();
 
         ImageView big = new ImageView(act);
         LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(128), dp(128));
@@ -295,12 +291,6 @@ public class BalancesView extends BaseView {
             hint.setTextColor(Design.dim()); hint.setTextSize(11f); hint.setGravity(Gravity.CENTER);
             hint.setPadding(0, 0, 0, dp(8)); box.addView(hint);
         }
-
-        TextView title = new TextView(act);
-        title.setText(b.name + (b.isNft() ? "   ·  NFT" : ""));
-        title.setTextColor(Design.accent()); title.setTextSize(18f);
-        title.setGravity(Gravity.CENTER); title.setTypeface(Design.typeface(), android.graphics.Typeface.BOLD);
-        title.setPadding(0, 0, 0, dp(8)); box.addView(title);
 
         // Full-granularity balance triple — always, per the family convention, and always at FULL
         // precision: the cards are trimmed for legibility, this sheet is where the exact figure is.
@@ -348,7 +338,7 @@ public class BalancesView extends BaseView {
         box.addView(coinsBox);
 
         // Held by the async contract fetch so a bury action can close this sheet first.
-        final androidx.appcompat.app.AlertDialog[] sheet = new androidx.appcompat.app.AlertDialog[1];
+        final android.app.Dialog[] sheet = new android.app.Dialog[1];
         if (!b.isMinima()) loadContract(b, contractBox, sheet);
         loadCoins(b, coinsBox);
 
@@ -365,31 +355,29 @@ public class BalancesView extends BaseView {
                     HiddenTokens.unhide(act, b.tokenid);
                     refresh();
                 } else {
-                    new androidx.appcompat.app.AlertDialog.Builder(act)
-                            .setTitle("Hide this token?")
-                            .setMessage("“" + b.name + "” disappears from your balances list. "
+                    Sheet.create(act, "Hide this token?")
+                .subtitle("“" + b.name + "” disappears from your balances list. "
                                     + "You can unhide it from Settings or the hidden-tokens row.")
-                            .setNegativeButton("Cancel", null)
-                            .setPositiveButton("Hide", (d, w) -> { HiddenTokens.hide(act, b.tokenid); refresh(); })
-                            .show();
+                .action("Cancel", Sheet.Style.SECONDARY, null)
+                .action("Hide", Sheet.Style.PRIMARY, () -> { HiddenTokens.hide(act, b.tokenid); refresh(); })
+                .show();
                 }
             });
             box.addView(hide);
         }
 
-        androidx.appcompat.app.AlertDialog.Builder dlg = new androidx.appcompat.app.AlertDialog.Builder(act)
-                .setView(sv)
-                .setNegativeButton("Close", null)
-                .setNeutralButton("Receive", (d, w) -> act.goToTab(MainActivity.TAB_RECEIVE));
+        sheetUi.action("Close", Sheet.Style.SECONDARY, null);
+        sheetUi.action("Receive", Sheet.Style.SECONDARY, () -> act.goToTab(MainActivity.TAB_RECEIVE));
         if (positive(b.sendable)) {
-            dlg.setPositiveButton("Send", (d, w) -> act.sendToken(b.tokenid));
+            sheetUi.action("Send", Sheet.Style.PRIMARY, () -> act.sendToken(b.tokenid));
         }
-        sheet[0] = dlg.show();
+        sheetUi.show();
+        sheet[0] = sheetUi.dialog();
     }
 
     /** Fetch the token record (script, total, creation) and add a collapsible contract section. */
     private void loadContract(final TokenBalance b, final LinearLayout into,
-                              final androidx.appcompat.app.AlertDialog[] sheet) {
+                              final android.app.Dialog[] sheet) {
         if (!Util.isValidHexId(b.tokenid)) return;   // chain-supplied id — never interpolate unvetted
         act.node().cmd("tokens tokenid:" + b.tokenid, new NodeApi.Cb() {
             @Override public void onResult(org.json.JSONObject json) {
@@ -540,7 +528,12 @@ public class BalancesView extends BaseView {
         iv.setBackgroundColor(0xFF000000);
         iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
         ImageLoader.loadFull(act, url, iv, R.drawable.ic_coin_placeholder);
-        androidx.appcompat.app.AlertDialog dlg = new androidx.appcompat.app.AlertDialog.Builder(act).setView(iv).create();
+        final android.app.Dialog dlg = new android.app.Dialog(act);
+        dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        dlg.setContentView(iv);
+        if (dlg.getWindow() != null) {
+            dlg.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0xFF000000));
+        }
         iv.setOnClickListener(v -> dlg.dismiss());
         dlg.show();
     }

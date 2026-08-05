@@ -240,9 +240,9 @@ public class SendView extends BaseView {
         box.setOrientation(LinearLayout.VERTICAL);
         box.setBackgroundColor(Design.bg());
         box.setPadding(dp(8), dp(8), dp(8), dp(8));
-        ScrollView sv = new ScrollView(act);
-        sv.addView(box);
-        final AlertDialog dlg = new AlertDialog.Builder(act).setTitle("Send which token?").setView(sv).create();
+        final Sheet pick = Sheet.create(act, "Send which token?");
+        pick.body(box);
+        pick.action("Cancel", Sheet.Style.SECONDARY, null);
         for (final TokenBalance b : all) {
             LinearLayout r = new LinearLayout(act);
             r.setOrientation(LinearLayout.HORIZONTAL);
@@ -260,12 +260,12 @@ public class SendView extends BaseView {
             r.addView(amt);
             r.setOnClickListener(v -> {
                 quickTokenid = b.tokenid;
-                dlg.dismiss();
+                pick.dismiss();
                 refresh();
             });
             box.addView(r);
         }
-        dlg.show();
+        pick.show();
     }
 
     // ----- field helpers -----
@@ -479,14 +479,11 @@ public class SendView extends BaseView {
         warn.setPadding(0, dp(14), 0, 0);
         body.addView(warn);
 
-        ScrollView sv = new ScrollView(act);
-        sv.addView(body);
-
-        new AlertDialog.Builder(act)
-                .setTitle("Confirm transaction")
-                .setView(sv)
-                .setNegativeButton("Back", null)
-                .setPositiveButton("Send →", (d, w) -> runQuickSend(recipient, amountStr, burnStr, split, tokenName))
+        Sheet.create(act, "Confirm transaction")
+                .body(body)
+                .action("Back", Sheet.Style.SECONDARY, null)
+                .action("Send →", Sheet.Style.PRIMARY,
+                        () -> runQuickSend(recipient, amountStr, burnStr, split, tokenName))
                 .show();
     }
 
@@ -571,14 +568,10 @@ public class SendView extends BaseView {
         warn.setPadding(0, dp(14), 0, 0);
         body.addView(warn);
 
-        ScrollView sv = new ScrollView(act);
-        sv.addView(body);
-
-        new AlertDialog.Builder(act)
-                .setTitle("Confirm transaction")
-                .setView(sv)
-                .setNegativeButton("Back", null)
-                .setPositiveButton("Sign & Post →", (d, w) ->
+        Sheet.create(act, "Confirm transaction")
+                .body(body)
+                .action("Back", Sheet.Style.SECONDARY, null)
+                .action("Sign & Post →", Sheet.Style.PRIMARY, () ->
                         buildSend(sel, recipient, amountStr, changeAddr, changeStr, burnStr, tokenid, tokenName))
                 .show();
     }

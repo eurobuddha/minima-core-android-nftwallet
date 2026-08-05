@@ -39,21 +39,19 @@ public final class StateNftActions {
             // An unstamped unit still carries the sentinel — the creator bypass is LIVE on it, so a
             // recipient would hold a coin the creator can rewrite; and an active mint's MOVE phase
             // would fight to pull it back. Only sealed identities leave the wallet.
-            new androidx.appcompat.app.AlertDialog.Builder(act)
-                    .setTitle("Cannot transfer")
-                    .setMessage("This item has not been stamped yet — its identity isn't sealed, and "
+            Sheet.create(act, "Cannot transfer")
+                .subtitle("This item has not been stamped yet — its identity isn't sealed, and "
                             + "the creator key could still rewrite it. Wait for the mint to finish stamping.")
-                    .setPositiveButton("Close", null)
-                    .show();
+                .action("Close", Sheet.Style.SECONDARY, null)
+                .show();
             return;
         }
         if (!StateNft.replayableState(coin)) {
-            new androidx.appcompat.app.AlertDialog.Builder(act)
-                    .setTitle("Cannot transfer")
-                    .setMessage("This coin carries state this wallet does not recognise as safe to replay. "
+            Sheet.create(act, "Cannot transfer")
+                .subtitle("This coin carries state this wallet does not recognise as safe to replay. "
                             + "Transferring it could corrupt or misuse the transaction — refusing.")
-                    .setPositiveButton("Close", null)
-                    .show();
+                .action("Close", Sheet.Style.SECONDARY, null)
+                .show();
             return;
         }
 
@@ -95,22 +93,19 @@ public final class StateNftActions {
         addrRow.setLayoutParams(arlp);
         box.addView(addrRow);
 
-        final androidx.appcompat.app.AlertDialog dlg = new androidx.appcompat.app.AlertDialog.Builder(act)
-                .setTitle("Transfer " + displayName)
-                .setView(box)
-                .setNegativeButton("Back", null)
-                .setPositiveButton("Transfer →", null)   // set below so a bad address doesn't dismiss
-                .create();
-        dlg.show();
-        dlg.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            String to = addr.getText().toString().trim();
-            if (!Util.isValidAddress(to)) {
-                addr.setError("Invalid address");
-                return;
-            }
-            dlg.dismiss();
-            runTransfer(act, tokenid, displayName, coin, to);
-        });
+        Sheet.create(act, "Transfer " + displayName)
+                .body(box)
+                .action("Back", Sheet.Style.SECONDARY, null)
+                .action("Transfer →", Sheet.Style.PRIMARY, () -> {
+                    String to = addr.getText().toString().trim();
+                    if (!Util.isValidAddress(to)) {
+                        android.widget.Toast.makeText(act, "That isn't a valid Minima address.",
+                                android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    runTransfer(act, tokenid, displayName, coin, to);
+                })
+                .show();
     }
 
     private static void runTransfer(MainActivity act, String tokenid, String displayName,
@@ -118,7 +113,7 @@ public final class StateNftActions {
         final String coinid = coin.optString("coinid", "");
         String txn = "tr" + shortId(coinid);
         List<String> cmds = StateNft.transferCommands(txn, tokenid, coin, to);
-        final androidx.appcompat.app.AlertDialog progress = progressDialog(act,
+        final Sheet.Progress progress = progressDialog(act,
                 "Transferring " + displayName, "Building and posting the transaction…");
         CmdChain.run(act.node(), cmds, "txndelete id:" + txn, new CmdChain.Done() {
             @Override public void ok(JSONObject last) {
@@ -144,20 +139,18 @@ public final class StateNftActions {
                                   String displayName, JSONObject coin) {
         if (!idsSafe(act, tokenid, coin)) return;
         if (StateNft.stamped(coin) == null) {
-            new androidx.appcompat.app.AlertDialog.Builder(act)
-                    .setTitle("Cannot bury")
-                    .setMessage("Only stamped items can be buried from the wallet. Unstamped mint "
+            Sheet.create(act, "Cannot bury")
+                .subtitle("Only stamped items can be buried from the wallet. Unstamped mint "
                             + "coins are managed by the mint pipeline.")
-                    .setPositiveButton("Close", null)
-                    .show();
+                .action("Close", Sheet.Style.SECONDARY, null)
+                .show();
             return;
         }
         if (!StateNft.replayableState(coin)) {
-            new androidx.appcompat.app.AlertDialog.Builder(act)
-                    .setTitle("Cannot bury")
-                    .setMessage("This coin carries state this wallet does not recognise as safe to replay — refusing.")
-                    .setPositiveButton("Close", null)
-                    .show();
+            Sheet.create(act, "Cannot bury")
+                .subtitle("This coin carries state this wallet does not recognise as safe to replay — refusing.")
+                .action("Close", Sheet.Style.SECONDARY, null)
+                .show();
             return;
         }
 
@@ -188,22 +181,18 @@ public final class StateNftActions {
         confirm.setLayoutParams(clp);
         box.addView(confirm);
 
-        final androidx.appcompat.app.AlertDialog dlg = new androidx.appcompat.app.AlertDialog.Builder(act)
-                .setTitle("Bury " + displayName + "?")
-                .setView(box)
-                .setNegativeButton("Back", null)
-                .setPositiveButton("Bury forever", null)
-                .create();
-        dlg.show();
-        dlg.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setTextColor(Design.red());
-        dlg.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            if (!confirm.getText().toString().trim().equals(collectionName)) {
-                confirm.setError("Type the exact collection name");
-                return;
-            }
-            dlg.dismiss();
-            runBury(act, tokenid, displayName, coin);
-        });
+        Sheet.create(act, "Bury " + displayName + "?")
+                .body(box)
+                .action("Back", Sheet.Style.SECONDARY, null)
+                .action("Bury forever", Sheet.Style.DANGER, () -> {
+                    if (!confirm.getText().toString().trim().equals(collectionName)) {
+                        android.widget.Toast.makeText(act, "Type the exact collection name to confirm.",
+                                android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    runBury(act, tokenid, displayName, coin);
+                })
+                .show();
     }
 
     private static void runBury(MainActivity act, String tokenid, String displayName, JSONObject coin) {
@@ -211,7 +200,7 @@ public final class StateNftActions {
         String txn = "by" + shortId(coinid);
         // Stamped unit: identity-preserving path, owner signature only (creatorPk empty).
         List<String> cmds = StateNft.buryCommands(txn, tokenid, "", coin, true);
-        final androidx.appcompat.app.AlertDialog progress = progressDialog(act,
+        final Sheet.Progress progress = progressDialog(act,
                 "Burying " + displayName, "Building and posting the graveyard transaction…");
         CmdChain.run(act.node(), cmds, "txndelete id:" + txn, new CmdChain.Done() {
             @Override public void ok(JSONObject last) {
@@ -244,11 +233,11 @@ public final class StateNftActions {
                                             final String collectionName, final String creatorPk,
                                             final Runnable onDone) {
         if (!Util.isValidHexId(tokenid)) {
-            new androidx.appcompat.app.AlertDialog.Builder(act)
-                    .setTitle("Refusing this collection")
-                    .setMessage("Its token id is not plain hex, so this wallet will not build "
+            Sheet.create(act, "Refusing this collection")
+                .subtitle("Its token id is not plain hex, so this wallet will not build "
                             + "transactions from it.")
-                    .setPositiveButton("Close", null).show();
+                .action("Close", Sheet.Style.SECONDARY, null)
+                .show();
             return;
         }
 
@@ -281,28 +270,24 @@ public final class StateNftActions {
         confirm.setLayoutParams(clp);
         box.addView(confirm);
 
-        final androidx.appcompat.app.AlertDialog dlg = new androidx.appcompat.app.AlertDialog.Builder(act)
-                .setTitle("Bury the whole collection?")
-                .setView(box)
-                .setNegativeButton("Back", null)
-                .setPositiveButton("Bury everything", null)
-                .create();
-        dlg.show();
-        dlg.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setTextColor(Design.red());
-        dlg.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            if (!confirm.getText().toString().trim().equals(collectionName)) {
-                confirm.setError("Type the exact collection name");
-                return;
-            }
-            dlg.dismiss();
-            gatherAndBury(act, tokenid, collectionName, creatorPk, onDone);
-        });
+        Sheet.create(act, "Bury the whole collection?")
+                .body(box)
+                .action("Back", Sheet.Style.SECONDARY, null)
+                .action("Bury everything", Sheet.Style.DANGER, () -> {
+                    if (!confirm.getText().toString().trim().equals(collectionName)) {
+                        android.widget.Toast.makeText(act, "Type the exact collection name to confirm.",
+                                android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    gatherAndBury(act, tokenid, collectionName, creatorPk, onDone);
+                })
+                .show();
     }
 
     private static void gatherAndBury(final MainActivity act, final String tokenid,
                                       final String collectionName, final String creatorPk,
                                       final Runnable onDone) {
-        final androidx.appcompat.app.AlertDialog progress = progressDialog(act,
+        final Sheet.Progress progress = progressDialog(act,
                 "Burying " + collectionName, "Finding the coins you still hold…");
         act.node().cmd("coins relevant:true tokenid:" + tokenid, new NodeApi.Cb() {
             @Override public void onResult(JSONObject json) {
@@ -337,7 +322,7 @@ public final class StateNftActions {
 
     private static void buryNext(final MainActivity act, final String tokenid, final String creatorPk,
                                  final java.util.List<JSONObject> coins, final int i, final int[] done,
-                                 final androidx.appcompat.app.AlertDialog progress, final Runnable onDone) {
+                                 final Sheet.Progress progress, final Runnable onDone) {
         if (i >= coins.size()) {
             setMessage(progress, "Posted " + done[0] + " of " + coins.size() + " burials.\n\n"
                     + "The chain has the last word — the items disappear from your wallet as each "
@@ -375,7 +360,7 @@ public final class StateNftActions {
      * The only proof is the input coin disappearing from {@code coins relevant:true tokenid:}.
      */
     private static void watchDeparture(MainActivity act, String tokenid, String coinid,
-                                       androidx.appcompat.app.AlertDialog progress, String successMsg) {
+                                       Sheet.Progress progress, String successMsg) {
         final Handler h = new Handler(Looper.getMainLooper());
         final int[] tries = {0};
         final Runnable[] poll = new Runnable[1];
@@ -439,11 +424,10 @@ public final class StateNftActions {
     private static boolean idsSafe(MainActivity act, String tokenid, JSONObject coin) {
         String coinid = coin == null ? "" : coin.optString("coinid", "");
         if (Util.isValidHexId(tokenid) && Util.isValidHexId(coinid)) return true;
-        new androidx.appcompat.app.AlertDialog.Builder(act)
-                .setTitle("Refusing this coin")
-                .setMessage("Its token or coin id is not a plain hex value. That should be impossible "
+        Sheet.create(act, "Refusing this coin")
+                .subtitle("Its token or coin id is not a plain hex value. That should be impossible "
                         + "for a genuine coin, so this wallet will not build a transaction from it.")
-                .setPositiveButton("Close", null)
+                .action("Close", Sheet.Style.SECONDARY, null)
                 .show();
         return false;
     }
@@ -453,26 +437,14 @@ public final class StateNftActions {
         @Override public void onError(String message) {}
     };
 
-    private static androidx.appcompat.app.AlertDialog progressDialog(MainActivity act, String title, String msg) {
-        androidx.appcompat.app.AlertDialog d = new androidx.appcompat.app.AlertDialog.Builder(act)
-                .setTitle(title)
-                .setMessage(msg)
-                .setCancelable(false)
-                .create();
-        d.show();
-        return d;
+    private static Sheet.Progress progressDialog(MainActivity act, String title, String msg) {
+        return Sheet.progress(act, title, msg);
     }
 
-    private static void setMessage(androidx.appcompat.app.AlertDialog d, String msg) {
-        try { d.setMessage(msg); } catch (Exception ignored) {}
-    }
+    private static void setMessage(Sheet.Progress d, String msg) { d.text(msg); }
 
-    private static void makeDismissable(androidx.appcompat.app.AlertDialog d) {
-        try {
-            d.setCancelable(true);
-            d.setCanceledOnTouchOutside(true);
-        } catch (Exception ignored) {}
-    }
+    /** The work is over — let the user close it, and give them the button. */
+    private static void makeDismissable(Sheet.Progress d) { d.finish(); }
 
     private static String shortId(String coinid) {
         String c = coinid == null ? "" : coinid.replace("0x", "");

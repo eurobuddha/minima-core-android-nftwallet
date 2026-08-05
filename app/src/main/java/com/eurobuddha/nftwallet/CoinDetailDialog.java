@@ -7,7 +7,6 @@ import android.graphics.Typeface;
 import android.view.Gravity;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -27,20 +26,8 @@ public final class CoinDetailDialog {
     private CoinDetailDialog() {}
 
     public static void show(MainActivity act, Coin c) {
-        ScrollView sv = new ScrollView(act);
-        LinearLayout box = new LinearLayout(act);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(act, 20), dp(act, 14), dp(act, 20), dp(act, 14));
-        box.setBackgroundColor(Design.bg());
-        sv.addView(box);
-
-        // headline: amount + token
-        TextView amt = new TextView(act);
-        amt.setText(Util.tidyAmount(c.amount) + "  " + c.tokenName);
-        amt.setTextColor(Design.heading());
-        amt.setTextSize(19f);
-        amt.setTypeface(Design.typefaceBold());
-        box.addView(amt);
+        final Sheet sheet = Sheet.create(act, Util.tidyAmount(c.amount) + "  " + c.tokenName);
+        LinearLayout box = sheet.body();
 
         // status chips line
         TextView chips = new TextView(act);
@@ -109,10 +96,8 @@ public final class CoinDetailDialog {
         actions.setPadding(0, dp(act, 12), 0, 0);
         box.addView(actions);
 
-        final androidx.appcompat.app.AlertDialog dlg = new androidx.appcompat.app.AlertDialog.Builder(act)
-                .setView(sv)
-                .setPositiveButton("Close", null)
-                .show();
+        sheet.action("Close", Sheet.Style.SECONDARY, null);
+        final android.app.Dialog dlg = sheet.show();
 
         if (!Util.isMinima(c.tokenid) && Util.isValidHexId(c.tokenid)
                 && !c.state.isEmpty() && isMine(act, c)) {

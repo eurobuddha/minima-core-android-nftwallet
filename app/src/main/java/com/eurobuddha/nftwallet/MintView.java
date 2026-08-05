@@ -1204,13 +1204,12 @@ public class MintView extends BaseView {
             repost.setTextSize(13f);
             repost.setTypeface(Design.typefaceBold());
             repost.setPadding(0, dp(14), 0, dp(4));
-            repost.setOnClickListener(v -> new androidx.appcompat.app.AlertDialog.Builder(act)
-                    .setTitle("Re-post the create?")
-                    .setMessage("Only do this if the first create was definitely lost. If it later "
+            repost.setOnClickListener(v -> Sheet.create(act, "Re-post the create?")
+                .subtitle("Only do this if the first create was definitely lost. If it later "
                             + "confirms too, you end up with TWO identical collections and no way to "
                             + "merge them — you would have to bury one.")
-                    .setNegativeButton("Wait longer", null)
-                    .setPositiveButton("Re-post", (d, w) -> {
+                .action("Wait longer", Sheet.Style.SECONDARY, null)
+                .action("Re-post", Sheet.Style.PRIMARY, () -> {
                         JSONObject fresh = LocalStore.findById(act, progressRowId);
                         if (fresh != null) {
                             try { fresh.put("posted", 0); fresh.put("createstuck", 0); fresh.put("error", ""); }
@@ -1337,11 +1336,10 @@ public class MintView extends BaseView {
     }
 
     private void resultDialog(String title, String message) {
-        new androidx.appcompat.app.AlertDialog.Builder(act)
-                .setTitle(title)
-                .setMessage(message)
-                .setPositiveButton("View balances", (d, w) -> act.goToTab(MainActivity.TAB_BALANCES))
-                .setNegativeButton("Close", null)
+        Sheet.create(act, title)
+                .subtitle(message)
+                .action("Close", Sheet.Style.SECONDARY, null)
+                .action("View balances", Sheet.Style.PRIMARY, () -> act.goToTab(MainActivity.TAB_BALANCES))
                 .show();
     }
 
@@ -1381,13 +1379,10 @@ public class MintView extends BaseView {
         warn.setTextSize(11f);
         warn.setPadding(0, dp(10), 0, 0);
         body.addView(warn);
-        ScrollView sv = new ScrollView(act);
-        sv.addView(body);
-        new androidx.appcompat.app.AlertDialog.Builder(act)
-                .setTitle(title)
-                .setView(sv)
-                .setNegativeButton("Back", null)
-                .setPositiveButton(action, (d, w) -> go.run())
+        Sheet.create(act, title)
+                .body(body)
+                .action("Back", Sheet.Style.SECONDARY, null)
+                .action(action, Sheet.Style.PRIMARY, go::run)
                 .show();
     }
 

@@ -229,6 +229,145 @@ public final class StateNftActions {
         });
     }
 
+    // ===================== bury a whole collection =====================
+
+    /**
+     * Bury EVERY coin of a collection you still hold — the escape hatch for a mint that went wrong
+     * (a ruined image, a bad index) and can never be edited, only destroyed.
+     *
+     * Each coin is a separate transaction: stamped units take the identity-preserving path with the
+     * owner signature, unstamped ones need the creator signature for the bypass. They are posted in
+     * sequence rather than in parallel — one input coin each, so they cannot conflict, but serial
+     * posting keeps the node's single command thread sane and lets us report honest progress.
+     */
+    public static void buryCollectionDialog(final MainActivity act, final String tokenid,
+                                            final String collectionName, final String creatorPk,
+                                            final Runnable onDone) {
+        if (!Util.isValidHexId(tokenid)) {
+            new androidx.appcompat.app.AlertDialog.Builder(act)
+                    .setTitle("Refusing this collection")
+                    .setMessage("Its token id is not plain hex, so this wallet will not build "
+                            + "transactions from it.")
+                    .setPositiveButton("Close", null).show();
+            return;
+        }
+
+        LinearLayout box = new LinearLayout(act);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setBackgroundColor(Design.bg());
+        int pad = dp(act, 18);
+        box.setPadding(pad, dp(act, 8), pad, dp(act, 8));
+
+        TextView t = new TextView(act);
+        t.setText("This buries EVERY item of “" + collectionName + "” that you still hold — one "
+                + "transaction each, all to the graveyard address whose contract is RETURN FALSE. "
+                + "They can never be spent, moved or recovered by anyone, including you.\n\n"
+                + "Items already transferred to someone else are not affected.\n\n"
+                + "Type the collection name to confirm:\n" + collectionName);
+        t.setTextColor(Design.red());
+        t.setTextSize(12f);
+        box.addView(t);
+
+        final EditText confirm = new EditText(act);
+        confirm.setHint(collectionName);
+        confirm.setHintTextColor(Design.dim2());
+        confirm.setTextColor(Design.text());
+        confirm.setTextSize(13f);
+        confirm.setBackgroundColor(Design.surface2());
+        confirm.setPadding(dp(act, 10), dp(act, 10), dp(act, 10), dp(act, 10));
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        clp.topMargin = dp(act, 10);
+        confirm.setLayoutParams(clp);
+        box.addView(confirm);
+
+        final androidx.appcompat.app.AlertDialog dlg = new androidx.appcompat.app.AlertDialog.Builder(act)
+                .setTitle("Bury the whole collection?")
+                .setView(box)
+                .setNegativeButton("Back", null)
+                .setPositiveButton("Bury everything", null)
+                .create();
+        dlg.show();
+        dlg.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setTextColor(Design.red());
+        dlg.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            if (!confirm.getText().toString().trim().equals(collectionName)) {
+                confirm.setError("Type the exact collection name");
+                return;
+            }
+            dlg.dismiss();
+            gatherAndBury(act, tokenid, collectionName, creatorPk, onDone);
+        });
+    }
+
+    private static void gatherAndBury(final MainActivity act, final String tokenid,
+                                      final String collectionName, final String creatorPk,
+                                      final Runnable onDone) {
+        final androidx.appcompat.app.AlertDialog progress = progressDialog(act,
+                "Burying " + collectionName, "Finding the coins you still hold…");
+        act.node().cmd("coins relevant:true tokenid:" + tokenid, new NodeApi.Cb() {
+            @Override public void onResult(JSONObject json) {
+                org.json.JSONArray arr = json.optJSONArray("response");
+                final java.util.List<JSONObject> coins = new java.util.ArrayList<>();
+                if (arr != null) {
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject c = arr.optJSONObject(i);
+                        if (c == null) continue;
+                        if (!Util.isValidHexId(c.optString("coinid", ""))) continue;
+                        if (!StateNft.replayableState(c)) continue;   // never replay hostile state
+                        coins.add(c);
+                    }
+                }
+                if (coins.isEmpty()) {
+                    setMessage(progress, "You hold no coins of this collection — nothing to bury.");
+                    makeDismissable(progress);
+                    if (onDone != null) onDone.run();
+                    return;
+                }
+                buryNext(act, tokenid, creatorPk, coins, 0, new int[]{0}, progress, onDone);
+            }
+            @Override public void onError(String message) {
+                setMessage(progress, NodeApi.ERR_TOO_LONG.equals(message)
+                        ? "The node's coin list for this collection is too large to fetch here — "
+                          + "bury the items individually from the Gallery."
+                        : "Could not list the coins: " + message);
+                makeDismissable(progress);
+            }
+        });
+    }
+
+    private static void buryNext(final MainActivity act, final String tokenid, final String creatorPk,
+                                 final java.util.List<JSONObject> coins, final int i, final int[] done,
+                                 final androidx.appcompat.app.AlertDialog progress, final Runnable onDone) {
+        if (i >= coins.size()) {
+            setMessage(progress, "Posted " + done[0] + " of " + coins.size() + " burials.\n\n"
+                    + "The chain has the last word — the items disappear from your wallet as each "
+                    + "spend confirms, over the next few blocks.");
+            makeDismissable(progress);
+            act.reload();
+            if (onDone != null) onDone.run();
+            return;
+        }
+        final JSONObject coin = coins.get(i);
+        setMessage(progress, "Burying " + (i + 1) + " of " + coins.size() + "…");
+        final String txn = "bc" + shortId(coin.optString("coinid", ""));
+        // Stamped units preserve their identity into the graveyard; unstamped ones still carry the
+        // sentinel, so they need the creator signature to satisfy the bypass.
+        boolean stamped = StateNft.stamped(coin) != null;
+        java.util.List<String> cmds = StateNft.buryCommands(
+                txn, tokenid, stamped ? "" : creatorPk, coin, true);
+        CmdChain.run(act.node(), cmds, "txndelete id:" + txn, new CmdChain.Done() {
+            @Override public void ok(JSONObject last) {
+                act.node().cmd("txndelete id:" + txn, NOOP);
+                done[0]++;
+                buryNext(act, tokenid, creatorPk, coins, i + 1, done, progress, onDone);
+            }
+            @Override public void fail(String message) {
+                // One failure must not strand the rest — carry on and report the tally at the end.
+                buryNext(act, tokenid, creatorPk, coins, i + 1, done, progress, onDone);
+            }
+        });
+    }
+
     // ===================== departure watch =====================
 
     /**

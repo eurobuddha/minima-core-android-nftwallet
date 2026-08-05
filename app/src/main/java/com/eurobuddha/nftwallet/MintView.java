@@ -1195,6 +1195,29 @@ public class MintView extends BaseView {
             container.addView(r);
         }
 
+        // Escape hatch: a locked edition can never be edited, only destroyed. Available in every
+        // phase — a mint that went wrong (bad image, wrong index) is exactly when it's needed.
+        if (!tokenid.isEmpty()) {
+            TextView buryAll = new TextView(act);
+            buryAll.setText("✝  Bury this entire collection");
+            buryAll.setTextColor(Design.red());
+            buryAll.setTextSize(13f);
+            buryAll.setTypeface(Design.typefaceBold());
+            buryAll.setPadding(0, dp(18), 0, dp(6));
+            buryAll.setOnClickListener(v -> StateNftActions.buryCollectionDialog(
+                    act, tokenid, row.optString("name", "Collection"), row.optString("creatorpk", ""),
+                    () -> {
+                        JSONObject fresh = LocalStore.findById(act, progressRowId);
+                        if (fresh != null) {
+                            try { fresh.put("phase", "BURIED"); fresh.put("error", ""); }
+                            catch (Exception ignored) {}
+                            LocalStore.upsert(act, fresh);   // stops the mint engine touching it
+                        }
+                        refresh();
+                    }));
+            container.addView(buryAll);
+        }
+
         if (!"DONE".equals(phase)) {
             container.addView(primaryButton("Resume now", v -> {
                 Toast.makeText(act, "Nudging the mint engine…", Toast.LENGTH_SHORT).show();

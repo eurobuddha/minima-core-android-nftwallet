@@ -347,7 +347,9 @@ public class BalancesView extends BaseView {
         coinsBox.setOrientation(LinearLayout.VERTICAL);
         box.addView(coinsBox);
 
-        if (!b.isMinima()) loadContract(b, contractBox);
+        // Held by the async contract fetch so a bury action can close this sheet first.
+        final androidx.appcompat.app.AlertDialog[] sheet = new androidx.appcompat.app.AlertDialog[1];
+        if (!b.isMinima()) loadContract(b, contractBox, sheet);
         loadCoins(b, coinsBox);
 
         // Hide / unhide (old-wallet behaviour) — never for the native coin.
@@ -382,11 +384,12 @@ public class BalancesView extends BaseView {
         if (positive(b.sendable)) {
             dlg.setPositiveButton("Send", (d, w) -> act.sendToken(b.tokenid));
         }
-        dlg.show();
+        sheet[0] = dlg.show();
     }
 
     /** Fetch the token record (script, total, creation) and add a collapsible contract section. */
-    private void loadContract(TokenBalance b, final LinearLayout into) {
+    private void loadContract(final TokenBalance b, final LinearLayout into,
+                              final androidx.appcompat.app.AlertDialog[] sheet) {
         if (!Util.isValidHexId(b.tokenid)) return;   // chain-supplied id — never interpolate unvetted
         act.node().cmd("tokens tokenid:" + b.tokenid, new NodeApi.Cb() {
             @Override public void onResult(org.json.JSONObject json) {
@@ -430,6 +433,28 @@ public class BalancesView extends BaseView {
                     code.setOnClickListener(v -> CoinDetailDialog.copy(act, "Token script", script));
                     into.addView(toggle);
                     into.addView(code);
+                }
+
+                // A locked edition can only be destroyed, never edited — and this sheet is where
+                // you reach a collection you hold, whether or not this wallet minted it (a mint
+                // row may not exist at all, e.g. for a duplicate the engine created).
+                if (stateNft) {
+                    StateNft.Meta cm = StateNft.parseMeta(b.tokenid, tok);
+                    final String collection = cm != null && cm.name != null && !cm.name.isEmpty()
+                            ? cm.name : b.name;
+                    final String creatorPk = StateNft.creatorPk(script);
+                    TextView buryAll = new TextView(act);
+                    buryAll.setText("✝  Bury this entire collection");
+                    buryAll.setTextColor(Design.red());
+                    buryAll.setTextSize(13f);
+                    buryAll.setTypeface(Design.typefaceBold());
+                    buryAll.setPadding(0, dp(16), 0, dp(6));
+                    buryAll.setOnClickListener(v -> {
+                        if (sheet != null && sheet[0] != null) sheet[0].dismiss();
+                        StateNftActions.buryCollectionDialog(act, b.tokenid, collection, creatorPk,
+                                () -> act.reload());
+                    });
+                    into.addView(buryAll);
                 }
             }
             @Override public void onError(String message) { /* detail stays without the script */ }

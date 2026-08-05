@@ -441,6 +441,20 @@ public class GalleryView extends BaseView {
                 StateNftActions.buryDialog(act, it.tokenid, collection, display, it.coin.raw);
             });
             box.addView(bury);
+
+            TextView buryAll = new TextView(act);
+            buryAll.setText("✝  Bury the WHOLE collection (every item you hold)");
+            buryAll.setTextColor(Design.red());
+            buryAll.setTextSize(12f);
+            buryAll.setPadding(0, dp(2), 0, dp(4));
+            final JSONObject rec = tokenRecords.get(it.tokenid);
+            final String creatorPk = rec == null ? "" : StateNft.creatorPk(rec.optString("script", ""));
+            buryAll.setOnClickListener(v -> {
+                dlg.dismiss();
+                StateNftActions.buryCollectionDialog(act, it.tokenid, collection, creatorPk,
+                        () -> act.reload());
+            });
+            box.addView(buryAll);
         } else {
             b.setPositiveButton("Send", (d, w) -> act.sendToken(it.tokenid));
             b.show();

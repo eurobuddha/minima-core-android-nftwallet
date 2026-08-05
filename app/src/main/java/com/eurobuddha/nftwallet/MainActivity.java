@@ -230,6 +230,7 @@ public class MainActivity extends AppCompatActivity {
         tabs.setTabTextColors(Design.dim(), Design.heading());   // dapp: active tab text is --heading
         tabs.setSelectedTabIndicatorColor(Design.accent());
         tabs.setSelectedTabIndicatorHeight((int) (3 * getResources().getDisplayMetrics().density));  // 3px inset bar
+        wireTabScrollArrows(tabs);
 
         // Live updates: the node broadcasts {event,data} to enabled apps. Refresh on
         // NEWBLOCK / NEWBALANCE.
@@ -680,6 +681,37 @@ public class MainActivity extends AppCompatActivity {
         ui.removeCallbacks(reloadTask);
         // 400 ms coalesces the NEWBLOCK + NEWBALANCE burst into a single reload (less node load).
         ui.postDelayed(reloadTask, 400);
+    }
+
+    /**
+     * Chevrons either side of the tab strip. Seven tabs don't fit a narrow (or folded) display and
+     * a scrollable TabLayout gives no hint that more exists — so show an arrow only on the side
+     * that actually has something left to reveal, and scroll by most of a screen on tap.
+     */
+    private void wireTabScrollArrows(final TabLayout tabs) {
+        final TextView left = findViewById(R.id.tabScrollLeft);
+        final TextView right = findViewById(R.id.tabScrollRight);
+        left.setTextColor(Design.accent());
+        right.setTextColor(Design.accent());
+
+        View.OnClickListener scroll = v -> {
+            int by = Math.max(1, (int) (tabs.getWidth() * 0.7f));
+            tabs.smoothScrollBy(v == left ? -by : by, 0);
+            // Re-check once the fling settles; TabLayout gives us no scroll-end callback.
+            tabs.postDelayed(() -> updateTabArrows(tabs, left, right), 350);
+        };
+        left.setOnClickListener(scroll);
+        right.setOnClickListener(scroll);
+
+        tabs.getViewTreeObserver().addOnScrollChangedListener(() -> updateTabArrows(tabs, left, right));
+        tabs.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or2, ob) -> updateTabArrows(tabs, left, right));
+        tabs.post(() -> updateTabArrows(tabs, left, right));
+    }
+
+    private void updateTabArrows(TabLayout tabs, View left, View right) {
+        if (tabs == null || left == null || right == null) return;
+        left.setVisibility(tabs.canScrollHorizontally(-1) ? View.VISIBLE : View.GONE);
+        right.setVisibility(tabs.canScrollHorizontally(1) ? View.VISIBLE : View.GONE);
     }
 
     // ===== StateNFT mint engine driver =====

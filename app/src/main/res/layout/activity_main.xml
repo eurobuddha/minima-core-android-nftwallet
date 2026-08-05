@@ -109,15 +109,47 @@
             android:text="Open Minima Core" />
     </LinearLayout>
 
-    <com.google.android.material.tabs.TabLayout
-        android:id="@+id/tabs"
+    <!-- Tab strip with scroll affordances: seven tabs overflow a narrow/cover display and there
+         was nothing to show more existed off-screen. -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:tabMode="scrollable"
-        app:tabGravity="fill"
-        app:tabIndicatorColor="@color/ux_accent"
-        app:tabSelectedTextColor="@color/ux_accent"
-        app:tabTextColor="@color/ux_subtext" />
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/tabScrollLeft"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:text="‹"
+            android:textSize="20sp"
+            android:gravity="center"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:visibility="gone" />
+
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/tabs"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            app:tabMode="scrollable"
+            app:tabGravity="fill"
+            app:tabIndicatorColor="@color/ux_accent"
+            app:tabSelectedTextColor="@color/ux_accent"
+            app:tabTextColor="@color/ux_subtext" />
+
+        <TextView
+            android:id="@+id/tabScrollRight"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:text="›"
+            android:textSize="20sp"
+            android:gravity="center"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:visibility="gone" />
+    </LinearLayout>
 
     <androidx.viewpager.widget.ViewPager
         android:id="@+id/pager"

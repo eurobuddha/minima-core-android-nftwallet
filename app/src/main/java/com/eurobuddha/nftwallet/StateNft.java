@@ -56,6 +56,13 @@ public final class StateNft {
         Meta m = new Meta();
         m.tokenid = tokenid == null ? "" : tokenid;
         JSONObject root = tokenNode instanceof JSONObject ? (JSONObject) tokenNode : null;
+        // `tokens tokenid:` returns an ENVELOPE — {token:{name:{…},totalamount},script} — while a
+        // balance row hands us the token record directly. Unwrap so either shape parses.
+        JSONObject envelope = null;
+        if (root != null && root.opt("token") instanceof JSONObject) {
+            envelope = root;
+            root = root.optJSONObject("token");
+        }
         JSONObject meta = null;
         if (root != null && root.opt("name") instanceof JSONObject) {
             meta = root.optJSONObject("name");
@@ -65,7 +72,10 @@ public final class StateNft {
             m.name = first(src.optString("name", ""), root.optString("name", ""), "Collection");
             m.description = first(src.optString("description", ""), root.optString("description", ""));
             m.mode = first(src.optString("mode", ""), root.optString("mode", ""), src.optString("base", "").isEmpty() ? "embed" : "url");
-            m.size = firstInt(src.opt("size"), root.opt("size"), root.opt("total"));
+            m.size = firstInt(src.opt("size"), root.opt("size"), root.opt("total"),
+                    root.opt("totalamount"), root.opt("amount"),
+                    envelope == null ? null : envelope.opt("total"),
+                    envelope == null ? null : envelope.opt("totalamount"));
             m.base = first(src.optString("base", ""), root.optString("base", ""));
             m.ext = first(src.optString("ext", ""), root.optString("ext", ""), ".png");
             m.icon = first(src.optString("url", ""), root.optString("url", ""), src.optString("icon", ""), root.optString("icon", ""));
@@ -118,14 +128,57 @@ public final class StateNft {
         return meta;
     }
 
+    /**
+     * Read a state port for INTERPRETATION (index, embedded image).
+     *
+     * Deliberately lenient about shape, because what the node returns varies: ports arrive as ints
+     * or strings, the state as an array of {port,data} or as a plain {port:data} map, and string
+     * values are sometimes quoted. Anything that MUTATES chain state uses {@link #rawStateEntries}
+     * and stays byte-exact — this leniency must never leak into what we write back.
+     */
     public static String state(JSONObject coin, int port) {
-        JSONArray st = coin == null ? null : coin.optJSONArray("state");
-        if (st == null) return null;
-        for (int i = 0; i < st.length(); i++) {
-            JSONObject s = st.optJSONObject(i);
-            if (s != null && s.optInt("port", -1) == port) return String.valueOf(s.opt("data"));
+        for (String[] e : rawStateEntries(coin)) {
+            if (e[0].equals(String.valueOf(port))) return unquote(e[1]);
         }
         return null;
+    }
+
+    /** Surrounding double quotes are a transport artefact, not part of the value. */
+    private static String unquote(String v) {
+        if (v != null && v.length() >= 2 && v.startsWith("\"") && v.endsWith("\"")) {
+            return v.substring(1, v.length() - 1);
+        }
+        return v;
+    }
+
+    /**
+     * Every state entry as {port, data} VERBATIM — no unquoting, no coercion. The transfer/bury
+     * replay writes these back, so they must reproduce the chain exactly. Handles both the array
+     * form and the {port:data} object form.
+     */
+    public static List<String[]> rawStateEntries(JSONObject coin) {
+        List<String[]> out = new ArrayList<>();
+        if (coin == null) return out;
+        JSONArray arr = coin.optJSONArray("state");
+        if (arr != null) {
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject s = arr.optJSONObject(i);
+                if (s == null) continue;
+                out.add(new String[]{ String.valueOf(s.opt("port")), String.valueOf(s.opt("data")) });
+            }
+            return out;
+        }
+        JSONObject obj = coin.optJSONObject("state");
+        if (obj != null) {
+            JSONArray names = obj.names();
+            if (names != null) {
+                for (int i = 0; i < names.length(); i++) {
+                    String k = names.optString(i);
+                    out.add(new String[]{ k, String.valueOf(obj.opt(k)) });
+                }
+            }
+        }
+        return out;
     }
 
     public static String stamped(JSONObject coin) {
@@ -150,14 +203,8 @@ public final class StateNft {
     }
 
     public static boolean replayableState(JSONObject coin) {
-        JSONArray st = coin == null ? null : coin.optJSONArray("state");
-        if (st == null) return true;
-        for (int i = 0; i < st.length(); i++) {
-            JSONObject s = st.optJSONObject(i);
-            if (s == null || !String.valueOf(s.opt("port")).matches("^[0-9]+$")
-                    || !safeStateValue(s.opt("data"))) {
-                return false;
-            }
+        for (String[] e : rawStateEntries(coin)) {
+            if (!e[0].matches("^[0-9]+$") || !safeStateValue(e[1])) return false;
         }
         return true;
     }
@@ -165,7 +212,8 @@ public final class StateNft {
     public static String imageUrl(Meta meta, int idx, JSONObject coin) {
         String embedded = state(coin, 1);
         if (embedded != null && embedded.startsWith("[") && embedded.endsWith("]")) {
-            return "data:image/png;base64," + embedded.substring(1, embedded.length() - 1);
+            // ImageTools writes JPEG; labelling it PNG only worked because decoders sniff.
+            return "data:image/jpeg;base64," + embedded.substring(1, embedded.length() - 1);
         }
         if (meta != null && !meta.base.isEmpty()) return meta.base + idx + (meta.ext == null ? "" : meta.ext);
         return IconResolver.resolve(meta == null ? "" : meta.icon);
@@ -216,12 +264,8 @@ public final class StateNft {
         // which posts "fine" and is silently rejected on-chain.
         cmds.add("txnoutput id:" + txn + " amount:" + safeAmount(coin)
                 + " address:" + to + " tokenid:" + tokenid + " storestate:true");
-        JSONArray st = coin.optJSONArray("state");
-        if (st != null) {
-            for (int i = 0; i < st.length(); i++) {
-                JSONObject s = st.optJSONObject(i);
-                cmds.add("txnstate id:" + txn + " port:" + s.opt("port") + " value:" + s.opt("data"));
-            }
+        for (String[] e : rawStateEntries(coin)) {
+            cmds.add("txnstate id:" + txn + " port:" + e[0] + " value:" + e[1]);
         }
         // Balance check BEFORE signing — an unbalanced txn posts "fine" and is rejected on-chain.
         cmds.add("txncheck id:" + txn);
@@ -239,12 +283,8 @@ public final class StateNft {
         cmds.add("txnoutput id:" + txn + " amount:" + safeAmount(coin)
                 + " address:" + GRAVEYARD + " tokenid:" + tokenid + " storestate:" + (preserve ? "true" : "false"));
         if (preserve) {
-            JSONArray st = coin.optJSONArray("state");
-            if (st != null) {
-                for (int i = 0; i < st.length(); i++) {
-                    JSONObject s = st.optJSONObject(i);
-                    cmds.add("txnstate id:" + txn + " port:" + s.opt("port") + " value:" + s.opt("data"));
-                }
+            for (String[] e : rawStateEntries(coin)) {
+                cmds.add("txnstate id:" + txn + " port:" + e[0] + " value:" + e[1]);
             }
         }
         cmds.add("txncheck id:" + txn);

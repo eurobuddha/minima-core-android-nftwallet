@@ -61,8 +61,14 @@ public class MintView extends BaseView {
     private LinearLayout colForm;
     private EditText cName, cSize, cDesc, cBase, cExt, cIconUrl, cExtUrl, cWebv;
     private TextView cStatus, cModeEmbed, cModeUrl, cImagesNote;
-    private LinearLayout cUrlBlock, cImagesBlock, cImageSlots;
+    private LinearLayout cUrlBlock, cImagesBlock, cImageSlots, cIconUrlBlock;
+    private TextView cIconModeEmbed, cIconModeUrl, cIconNote;
+    private ImageView cIconPreview;
     private boolean colEmbedMode = true;
+    /** Collection icon: true = embed on-chain, false = point at a URL. */
+    private boolean colIconEmbed = true;
+    /** Embedded collection icon, base64 (empty = fall back to item #1). */
+    private String colIconB64 = "";
     /** Per-item base64 images, key = item index 1..size. */
     private final java.util.HashMap<Integer, String> colImages = new java.util.HashMap<>();
 
@@ -675,7 +681,49 @@ public class MintView extends BaseView {
         buildSlots.setOnClickListener(v -> buildImageSlots());
         cImagesBlock.addView(buildSlots);
 
-        cIconUrl = addField(colForm, "Collection icon URL (optional)", "https://…  (or leave empty)", InputType.TYPE_TEXT_VARIATION_URI);
+        // ---- collection icon (what the regular wallet shows for this token) ----
+        TextView iconLbl = new TextView(act);
+        iconLbl.setText("Collection icon");
+        iconLbl.setTextColor(Design.dim());
+        iconLbl.setTextSize(12f);
+        iconLbl.setPadding(0, dp(14), 0, dp(4));
+        colForm.addView(iconLbl);
+
+        LinearLayout iconRow = new LinearLayout(act);
+        iconRow.setOrientation(LinearLayout.HORIZONTAL);
+        colForm.addView(iconRow);
+
+        cIconPreview = new ImageView(act);
+        LinearLayout.LayoutParams iplp = new LinearLayout.LayoutParams(dp(56), dp(56));
+        iplp.rightMargin = dp(10);
+        cIconPreview.setLayoutParams(iplp);
+        cIconPreview.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        cIconPreview.setBackgroundColor(Design.surface2());
+        cIconPreview.setOnClickListener(v -> { if (colIconEmbed) pickCollectionIcon(); });
+        iconRow.addView(cIconPreview);
+
+        LinearLayout iconCol = new LinearLayout(act);
+        iconCol.setOrientation(LinearLayout.VERTICAL);
+        iconRow.addView(iconCol, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        LinearLayout iconSeg = new LinearLayout(act);
+        iconSeg.setOrientation(LinearLayout.HORIZONTAL);
+        cIconModeEmbed = segBtn("EMBED", v -> setIconMode(true));
+        cIconModeUrl = segBtn("URL", v -> setIconMode(false));
+        iconSeg.addView(cIconModeEmbed, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        iconSeg.addView(cIconModeUrl, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        iconCol.addView(iconSeg);
+
+        cIconNote = new TextView(act);
+        cIconNote.setTextColor(Design.dim());
+        cIconNote.setTextSize(10f);
+        cIconNote.setPadding(0, dp(5), 0, 0);
+        iconCol.addView(cIconNote);
+
+        cIconUrlBlock = new LinearLayout(act);
+        cIconUrlBlock.setOrientation(LinearLayout.VERTICAL);
+        colForm.addView(cIconUrlBlock);
+        cIconUrl = addField(cIconUrlBlock, "Icon URL", "https://…", InputType.TYPE_TEXT_VARIATION_URI);
         cExtUrl = addField(colForm, "External URL (optional)", "https://…", InputType.TYPE_TEXT_VARIATION_URI);
         cWebv = addField(colForm, "Web validation URL (optional)", "https://…/collection.txt", InputType.TYPE_TEXT_VARIATION_URI);
 
@@ -684,7 +732,62 @@ public class MintView extends BaseView {
         colForm.addView(cStatus);
 
         setColMode(true);
+        setIconMode(true);
         return colForm;
+    }
+
+    /**
+     * The collection icon is what the ordinary wallet shows for this token. It is written into the
+     * token metadata by {@code tokencreate} and is therefore FIXED FOREVER at mint time — which is
+     * why the default (item #1) has to be resolved before minting starts, not looked up later.
+     */
+    private void setIconMode(boolean embed) {
+        colIconEmbed = embed;
+        cIconModeEmbed.setTextColor(embed ? Design.onAccent() : Design.dim());
+        cIconModeEmbed.setBackgroundColor(embed ? Design.accent() : Design.surface2());
+        cIconModeUrl.setTextColor(!embed ? Design.onAccent() : Design.dim());
+        cIconModeUrl.setBackgroundColor(!embed ? Design.accent() : Design.surface2());
+        cIconUrlBlock.setVisibility(embed ? View.GONE : View.VISIBLE);
+        refreshIconPreview();
+    }
+
+    private void pickCollectionIcon() {
+        act.pickImage(uri -> {
+            cIconNote.setText("Compressing…");
+            new Thread(() -> {
+                String b64;
+                try { b64 = ImageTools.compressUri(act, uri, ARTIMAGE_BUDGET); }
+                catch (Exception e) { b64 = ""; }
+                final String result = b64;
+                act.runOnUiThread(() -> {
+                    if (result.isEmpty()) { cIconNote.setText("Could not read that image — try another."); return; }
+                    colIconB64 = result;
+                    refreshIconPreview();
+                });
+            }).start();
+        });
+    }
+
+    /** Show whichever icon will actually be minted — chosen, or the item #1 fallback. */
+    private void refreshIconPreview() {
+        if (!colIconEmbed) {
+            cIconPreview.setImageBitmap(null);
+            cIconNote.setText("The wallet loads the icon from this URL.");
+            return;
+        }
+        if (!colIconB64.isEmpty()) {
+            ImageLoader.loadOver(act, "data:image/jpeg;base64," + colIconB64, cIconPreview, null);
+            cIconNote.setText("Embedded on-chain · " + colIconB64.length() + " b64 · tap to change");
+            return;
+        }
+        String first = colImages.get(1);
+        if (first != null) {
+            ImageLoader.loadOver(act, "data:image/jpeg;base64," + first, cIconPreview, null);
+            cIconNote.setText("Using item #1 by default · tap to choose a different icon");
+        } else {
+            cIconPreview.setImageBitmap(null);
+            cIconNote.setText("Defaults to item #1's image · tap to choose a different one");
+        }
     }
 
     private void setColMode(boolean embed) {
@@ -749,6 +852,7 @@ public class MintView extends BaseView {
             cImageSlots.addView(r);
         }
         updateSlotSummary();
+        if (cIconPreview != null) refreshIconPreview();   // the item-#1 default may have just changed
     }
 
     /** Live count under the slot list so you can see what's still outstanding. */
@@ -861,8 +965,29 @@ public class MintView extends BaseView {
                 }
             }
         }
+        // Resolve the icon NOW: tokencreate bakes it in permanently.
         final String iconUrl = cIconUrl.getText().toString().trim();
-        if (!iconUrl.isEmpty() && badUrl(iconUrl)) { status(cStatus, "Icon URL must be a plain http(s) link.", false); return; }
+        final String icon;
+        final String iconDesc;
+        if (colIconEmbed) {
+            if (!colIconB64.isEmpty()) {
+                icon = colIconB64;
+                iconDesc = "embedded on-chain (" + colIconB64.length() + " b64)";
+            } else if (colImages.containsKey(1)) {
+                icon = colImages.get(1);                       // mirror the first item
+                iconDesc = "item #1's image, embedded";
+            } else if (!colEmbedMode && !base.isEmpty()) {
+                icon = base + 1 + ext;                          // url-mode collections: item #1's URL
+                iconDesc = icon;
+            } else {
+                icon = "";
+                iconDesc = "None — the wallet will show a generated identicon";
+            }
+        } else {
+            if (!iconUrl.isEmpty() && badUrl(iconUrl)) { status(cStatus, "Icon URL must be a plain http(s) link.", false); return; }
+            icon = iconUrl;
+            iconDesc = iconUrl.isEmpty() ? "None — the wallet will show a generated identicon" : iconUrl;
+        }
         final String extUrl = cExtUrl.getText().toString().trim();
         if (!extUrl.isEmpty() && badUrl(extUrl)) { status(cStatus, "External URL must be a plain http(s) link.", false); return; }
         final String webv = cWebv.getText().toString().trim();
@@ -876,6 +1001,7 @@ public class MintView extends BaseView {
         if (!colEmbedMode) addConfirmRow(body, "Images at", base + "<i>" + ext);
         addConfirmRow(body, "Description", desc.isEmpty() ? "Not set" : desc);
         addConfirmRow(body, "Web validation", webv.isEmpty() ? "None set" : webv);
+        addConfirmRow(body, "Wallet icon", iconDesc);
         addConfirmRow(body, "Contract", "SAMESTATE locked edition — immutable once stamped");
         TextView pipeline = new TextView(act);
         pipeline.setText("The mint runs in phases (CREATE → MOVE → SPLIT → STAMP), one transaction "
@@ -886,7 +1012,7 @@ public class MintView extends BaseView {
         body.addView(pipeline);
 
         showConfirm("Start minting this collection?", body, "Start mint →", () ->
-                startCollection(name, size, desc, base, ext, iconUrl, extUrl, webv));
+                startCollection(name, size, desc, base, ext, icon, extUrl, webv));
     }
 
     /** Fetch the creator identity, persist the LocalStore row, kick the engine, show progress. */
@@ -932,6 +1058,7 @@ public class MintView extends BaseView {
                 JSONObject row = MintEngine.rowFromMeta(m, items);
                 LocalStore.upsert(act, row);
                 colImages.clear();
+                colIconB64 = "";
                 colForm = null;                    // fresh form next time
                 progressRowId = m.localId;
                 screen = Screen.PROGRESS;

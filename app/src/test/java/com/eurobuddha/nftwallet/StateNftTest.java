@@ -40,7 +40,7 @@ public class StateNftTest {
                 .put("state", new JSONArray()
                         .put(new JSONObject().put("port", 0).put("data", "3"))
                         .put(new JSONObject().put("port", 1).put("data", "[QUJDRA==]")));
-        assertEquals("data:image/png;base64,QUJDRA==", StateNft.imageUrl(meta, 3, coin));
+        assertEquals("data:image/jpeg;base64,QUJDRA==", StateNft.imageUrl(meta, 3, coin));
     }
 
     @Test public void transferReplaysEveryStatePort() throws Exception {
@@ -84,6 +84,52 @@ public class StateNftTest {
         assertEquals("Legacy StateNFT", meta.name);
         assertEquals(12, meta.size);
         assertEquals("https://example.com/icon.png", meta.icon);
+    }
+
+    @Test public void manualOpenMetadataUnwrapsTokenEnvelopeAndTotalAmount() throws Exception {
+        JSONObject token = new JSONObject()
+                .put("token", new JSONObject()
+                        .put("name", new JSONObject()
+                                .put("name", "Wrapped StateNFT")
+                                .put("mode", "embed")
+                                .put("url", "<artimage>AAAA</artimage>"))
+                        .put("totalamount", "17"))
+                .put("script", "RETURN TRUE");
+
+        StateNft.Meta meta = StateNft.parseMeta("0x01", token);
+
+        assertEquals("Wrapped StateNFT", meta.name);
+        assertEquals("embed", meta.mode);
+        assertEquals(17, meta.size);
+        assertEquals("<artimage>AAAA</artimage>", meta.icon);
+    }
+
+    @Test public void stampedCountSurvivesStringPortsObjectStateAndQuotedData() throws Exception {
+        StateNft.Meta meta = new StateNft.Meta();
+        meta.size = 17;
+        JSONArray owned = new JSONArray()
+                .put(new JSONObject()
+                        .put("coinid", "0x01")
+                        .put("state", new JSONArray()
+                                .put(new JSONObject().put("port", "0").put("data", "\"1\""))))
+                .put(new JSONObject()
+                        .put("coinid", "0x02")
+                        .put("state", new JSONObject().put("0", "2")));
+        JSONArray all = new JSONArray()
+                .put(new JSONObject()
+                        .put("coinid", "0x03")
+                        .put("state", new JSONArray()
+                                .put(new JSONObject().put("port", 0).put("data", "3"))));
+
+        List<StateNft.Item> items = StateNft.items(meta, owned, all);
+
+        assertEquals(17, items.size());
+        assertEquals("0x01", items.get(0).coin.optString("coinid"));
+        assertEquals("0x02", items.get(1).coin.optString("coinid"));
+        assertEquals("0x03", items.get(2).coin.optString("coinid"));
+        assertTrue(items.get(0).owned);
+        assertTrue(items.get(1).owned);
+        assertFalse(items.get(2).owned);
     }
 
     @Test public void localMintRowRoundTripsMetadata() throws Exception {

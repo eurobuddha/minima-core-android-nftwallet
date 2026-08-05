@@ -642,6 +642,22 @@ public class MintView extends BaseView {
         cImagesNote.setText("Each item's image is compressed to ≤" + STATE_IMG_BUDGET
                 + " base64 chars and sealed into its coin. Set the item count, then pick each image.");
         cImagesBlock.addView(cImagesNote);
+        TextView pickAll = new TextView(act);
+        pickAll.setText("＋ Pick images for the empty slots");
+        pickAll.setTextColor(Design.accent());
+        pickAll.setTextSize(13f);
+        pickAll.setTypeface(Design.typefaceBold());
+        pickAll.setPadding(0, dp(6), 0, dp(8));
+        pickAll.setOnClickListener(v -> {
+            int size = parsedSize();
+            if (size < 2 || size > 20) { status(cStatus, "Set the item count (2–20) first.", false); return; }
+            if (cImageSlots.getChildCount() == 0) buildImageSlots();
+            int first = 1;
+            for (int i = 1; i <= size; i++) if (!colImages.containsKey(i)) { first = i; break; }
+            pickCollectionImages(first);
+        });
+        cImagesBlock.addView(pickAll);
+
         cImageSlots = new LinearLayout(act);
         cImageSlots.setOrientation(LinearLayout.VERTICAL);
         cImagesBlock.addView(cImageSlots);
@@ -711,31 +727,95 @@ public class MintView extends BaseView {
             state.setTextSize(11f);
             state.setLetterSpacing(0.05f);
             r.addView(state);
-            r.setOnClickListener(v -> pickCollectionImage(idx, state));
+            r.setOnClickListener(v -> pickCollectionImages(idx));
             cImageSlots.addView(r);
         }
+        updateSlotSummary();
     }
 
-    private void pickCollectionImage(final int idx, final TextView state) {
-        act.pickImage(uri -> {
-            state.setText("compressing…");
-            new Thread(() -> {
+    /** Live count under the slot list so you can see what's still outstanding. */
+    private void updateSlotSummary() {
+        int size = parsedSize();
+        int filled = 0;
+        for (int i = 1; i <= size; i++) if (colImages.containsKey(i)) filled++;
+        cImagesNote.setText(filled == size
+                ? "All " + size + " images ready."
+                : filled + " of " + size + " images ready — tap any slot (or “Pick images”) and "
+                  + "select as many as you like; they fill the empty slots in order.");
+    }
+
+    /**
+     * Pick one or many images starting at {@code startIdx}. The first selection lands on that slot
+     * (replacing it if it was already filled — tapping a filled slot is how you redo one), and any
+     * further selections wrap forward through the collection filling only the EMPTY slots, so a
+     * part-finished collection can be completed in a single pass.
+     */
+    private void pickCollectionImages(final int startIdx) {
+        act.pickImages(uris -> {
+            int size = parsedSize();
+            if (size < 2 || size > 20) { status(cStatus, "Items must be 2–20.", false); return; }
+            java.util.List<Integer> targets = fillOrder(startIdx, size, uris.size(), colImages.keySet());
+            compressInto(uris, targets, (idx, b64) -> colImages.put(idx, b64),
+                    msg -> cImagesNote.setText(msg),
+                    () -> { buildImageSlots(); reportFill(targets.size(), uris.size(), size); });
+        });
+    }
+
+    /**
+     * Which slots a multi-selection should fill: the tapped slot first, then forward from it,
+     * wrapping around, skipping slots that already hold an image. Never longer than the selection.
+     */
+    private java.util.List<Integer> fillOrder(int startIdx, int size, int count, java.util.Set<Integer> taken) {
+        java.util.List<Integer> out = new ArrayList<>();
+        if (count <= 0) return out;
+        out.add(startIdx);                                   // the slot you tapped, filled or not
+        for (int step = 1; step < size && out.size() < count; step++) {
+            int idx = ((startIdx - 1 + step) % size) + 1;
+            if (!taken.contains(idx)) out.add(idx);
+        }
+        return out;
+    }
+
+    /** Compress each picked image onto its target slot off the UI thread, reporting progress. */
+    private void compressInto(final java.util.List<android.net.Uri> uris,
+                              final java.util.List<Integer> targets,
+                              final java.util.function.BiConsumer<Integer, String> assign,
+                              final java.util.function.Consumer<String> progress,
+                              final Runnable onDone) {
+        final int n = Math.min(uris.size(), targets.size());
+        if (n == 0) { onDone.run(); return; }
+        progress.accept("Compressing 1 / " + n + "…");
+        new Thread(() -> {
+            for (int i = 0; i < n; i++) {
                 String b64;
-                try { b64 = ImageTools.compressUri(act, uri, STATE_IMG_BUDGET); }
+                try { b64 = ImageTools.compressUri(act, uris.get(i), STATE_IMG_BUDGET); }
                 catch (Exception e) { b64 = ""; }
                 final String result = b64;
+                final int slot = targets.get(i);
+                final int shown = i + 1;
+                // Assign on the UI thread so the image map stays single-threaded.
                 act.runOnUiThread(() -> {
-                    if (result.isEmpty()) {
-                        state.setText("failed — try another");
-                        state.setTextColor(Design.red());
-                    } else {
-                        colImages.put(idx, result);
-                        state.setText("✓ " + result.length() + " b64");
-                        state.setTextColor(Design.success());
-                    }
+                    if (!result.isEmpty()) assign.accept(slot, result);
+                    if (shown < n) progress.accept("Compressing " + (shown + 1) + " / " + n + "…");
                 });
-            }).start();
-        });
+            }
+            act.runOnUiThread(onDone);
+        }).start();
+    }
+
+    /** Tell the user what the batch actually did — including leftovers or shortfall. */
+    private void reportFill(int targetCount, int picked, int size) {
+        int filled = 0;
+        for (int i = 1; i <= size; i++) if (colImages.containsKey(i)) filled++;
+        if (picked > targetCount) {
+            Toast.makeText(act, "Filled " + targetCount + " slot(s) — " + (picked - targetCount)
+                    + " image(s) left over, there were no empty slots for them.", Toast.LENGTH_LONG).show();
+        } else if (filled < size) {
+            Toast.makeText(act, filled + " of " + size + " slots filled — pick "
+                    + (size - filled) + " more.", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(act, "All " + size + " images ready.", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void onReviewCollection() {
@@ -965,39 +1045,7 @@ public class MintView extends BaseView {
             st.setTextColor(!coinid.isEmpty() ? Design.success() : needImage ? Design.accent() : Design.dim());
             r.addView(st);
             if (needImage) {
-                r.setOnClickListener(v -> act.pickImage(uri -> {
-                    st.setText("compressing…");
-                    new Thread(() -> {
-                        String b64;
-                        try { b64 = ImageTools.compressUri(act, uri, STATE_IMG_BUDGET); }
-                        catch (Exception e) { b64 = ""; }
-                        final String result = b64;
-                        act.runOnUiThread(() -> {
-                            if (result.isEmpty()) { st.setText("failed — retry"); return; }
-                            try { it.put("image", result); } catch (Exception ignored) {}
-                            JSONObject fresh = LocalStore.findById(act, progressRowId);
-                            if (fresh != null) {
-                                org.json.JSONArray fitems = MintEngine.localItems(fresh);
-                                for (int j = 0; j < fitems.length(); j++) {
-                                    JSONObject fit = fitems.optJSONObject(j);
-                                    if (fit != null && fit.optInt("idx") == idx) {
-                                        try { fit.put("image", result); } catch (Exception ignored) {}
-                                    }
-                                }
-                                try {
-                                    fresh.put("items", fitems);
-                                    if ("NEEDIMAGES".equals(fresh.optString("phase"))) {
-                                        fresh.put("phase", "STAMP");
-                                        fresh.put("error", "");
-                                    }
-                                } catch (Exception ignored) {}
-                                LocalStore.upsert(act, fresh);
-                            }
-                            refresh();
-                            act.mintEngineTick();
-                        });
-                    }).start();
-                }));
+                r.setOnClickListener(v -> pickProgressImages(row, idx));
             }
             container.addView(r);
         }
@@ -1015,6 +1063,56 @@ public class MintView extends BaseView {
             doneNote.setPadding(0, dp(14), 0, 0);
             container.addView(doneNote);
         }
+    }
+
+    /**
+     * Multi-fill for a paused (NEEDIMAGES) mint: pick as many images as you like starting at the
+     * tapped item; they land on that item and then on the other still-imageless items in order,
+     * are persisted to the collection row, and the phase is released back to STAMP.
+     */
+    private void pickProgressImages(final JSONObject row, final int startIdx) {
+        final int size = row.optInt("size", 0);
+        if (size <= 0) return;
+        // Only items still missing an image are candidates (besides the tapped one).
+        final java.util.Set<Integer> haveImage = new java.util.HashSet<>();
+        org.json.JSONArray items = MintEngine.localItems(row);
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject it = items.optJSONObject(i);
+            if (it != null && !it.optString("image", "").isEmpty()) haveImage.add(it.optInt("idx"));
+        }
+        act.pickImages(uris -> {
+            java.util.List<Integer> targets = fillOrder(startIdx, size, uris.size(), haveImage);
+            compressInto(uris, targets,
+                    (idx, b64) -> saveProgressImage(idx, b64),
+                    msg -> Toast.makeText(act, msg, Toast.LENGTH_SHORT).show(),
+                    () -> {
+                        refresh();
+                        Toast.makeText(act, "Images saved — stamping resumes on the next block.",
+                                Toast.LENGTH_SHORT).show();
+                        act.mintEngineTick();
+                    });
+        });
+    }
+
+    /** Persist one item's image into the collection row, releasing NEEDIMAGES back to STAMP. */
+    private void saveProgressImage(int idx, String b64) {
+        JSONObject fresh = LocalStore.findById(act, progressRowId);
+        if (fresh == null) return;
+        org.json.JSONArray fitems = MintEngine.localItems(fresh);
+        for (int j = 0; j < fitems.length(); j++) {
+            JSONObject fit = fitems.optJSONObject(j);
+            if (fit != null && fit.optInt("idx") == idx) {
+                try { fit.put("image", b64); } catch (Exception ignored) {}
+            }
+        }
+        try {
+            fresh.put("items", fitems);
+            if ("NEEDIMAGES".equals(fresh.optString("phase"))) {
+                fresh.put("phase", "STAMP");
+                fresh.put("error", "");
+            }
+        } catch (Exception ignored) {}
+        LocalStore.upsert(act, fresh);
     }
 
     // ===================== shared =====================

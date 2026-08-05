@@ -66,6 +66,8 @@ public class MainActivity extends AppCompatActivity {
     // ----- image pick (NFT art). Registered in onCreate; one consumer at a time. -----
     private androidx.activity.result.ActivityResultLauncher<String> imageLauncher;
     private java.util.function.Consumer<android.net.Uri> imageConsumer;
+    private androidx.activity.result.ActivityResultLauncher<String> imagesLauncher;
+    private java.util.function.Consumer<java.util.List<android.net.Uri>> imagesConsumer;
 
     // ----- wallet state -----
     private final List<Coin> coins = new ArrayList<>();
@@ -127,6 +129,13 @@ public class MainActivity extends AppCompatActivity {
             java.util.function.Consumer<android.net.Uri> consumer = imageConsumer;
             imageConsumer = null;
             if (consumer != null && uri != null) consumer.accept(uri);
+        });
+
+        imagesLauncher = registerForActivityResult(
+                new androidx.activity.result.contract.ActivityResultContracts.GetMultipleContents(), uris -> {
+            java.util.function.Consumer<java.util.List<android.net.Uri>> consumer = imagesConsumer;
+            imagesConsumer = null;
+            if (consumer != null && uris != null && !uris.isEmpty()) consumer.accept(uris);
         });
 
         pairingBanner = findViewById(R.id.pairingBanner);
@@ -635,6 +644,19 @@ public class MainActivity extends AppCompatActivity {
     public void sendToken(String tokenid) {
         ((SendView) views[TAB_SEND]).preselectToken(tokenid);
         goToTab(TAB_SEND);
+    }
+
+    /**
+     * Open the system image picker in MULTI-select mode; the consumer gets every chosen Uri in
+     * selection order (dropped on cancel). Used to fill a whole collection's image slots at once.
+     */
+    public void pickImages(java.util.function.Consumer<java.util.List<android.net.Uri>> consumer) {
+        imagesConsumer = consumer;
+        try { imagesLauncher.launch("image/*"); }
+        catch (Exception e) {
+            imagesConsumer = null;
+            Toast.makeText(this, "Could not open the image picker.", Toast.LENGTH_SHORT).show();
+        }
     }
 
     /** Open the system image picker; the consumer gets the chosen Uri (dropped on cancel). */

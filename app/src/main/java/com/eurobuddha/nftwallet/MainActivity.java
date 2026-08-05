@@ -413,13 +413,20 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    /** Replace the balance list from a `balance` reply. */
+    /** Replace the balance list from a `balance` reply, dropping malformed rows. */
     private void applyBalances(JSONArray arr) {
         balances.clear();
         if (arr == null) return;
+        int dropped = 0;
         for (int i = 0; i < arr.length(); i++) {
             JSONObject b = arr.optJSONObject(i);
-            if (b != null) balances.add(TokenBalance.from(b));
+            if (b == null) continue;
+            TokenBalance tb = TokenBalance.from(b);
+            if (tb.isWellFormed()) balances.add(tb); else dropped++;
+        }
+        if (dropped > 0) {
+            Toast.makeText(this, dropped + " malformed balance row(s) ignored — a token's metadata looks hostile.",
+                    Toast.LENGTH_LONG).show();
         }
     }
 

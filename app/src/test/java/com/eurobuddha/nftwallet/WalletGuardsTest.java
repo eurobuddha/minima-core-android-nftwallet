@@ -143,6 +143,21 @@ public class WalletGuardsTest {
         assertEquals("3", StateNft.safeAmount(ok));
     }
 
+    /** The `balance` reply is the second chain-data ingestion path — same hazard, same gate. */
+    @Test public void malformedBalanceRowsAreRejectedAtIngestion() throws Exception {
+        JSONObject hostile = new JSONObject();
+        hostile.put("tokenid", "0x00 ;send address:MxATTACKER amount:9999");
+        assertFalse(TokenBalance.from(hostile).isWellFormed());
+
+        JSONObject minima = new JSONObject();
+        minima.put("tokenid", "0x00");
+        assertTrue(TokenBalance.from(minima).isWellFormed());
+
+        JSONObject token = new JSONObject();
+        token.put("tokenid", "0x3C451D33AA1B2C3D4E5F60718293A4B5C6D7E8F90A1B2C3D4E5F60718293A4B5");
+        assertTrue(TokenBalance.from(token).isWellFormed());
+    }
+
     private static String joined(List<String> cmds) {
         StringBuilder sb = new StringBuilder();
         for (String c : cmds) sb.append(c).append('\n');

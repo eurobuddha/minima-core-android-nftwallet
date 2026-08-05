@@ -496,6 +496,14 @@ public class SendView extends BaseView {
         sending = true;
         previewBtn.setEnabled(false);
         status("Sending…", true);
+        // The tokenid rides straight into the command. Balance rows are vetted at ingestion, but
+        // this is the one place a bad id would become a chained command — never take it on trust.
+        if (!Util.isValidHexId(quickTokenid)) {
+            sending = false;
+            previewBtn.setEnabled(true);
+            status("That token's id is malformed — refusing to build the command.", false);
+            return;
+        }
         StringBuilder cmd = new StringBuilder("send address:").append(recipient)
                 .append(" amount:").append(amountStr)
                 .append(" tokenid:").append(quickTokenid);

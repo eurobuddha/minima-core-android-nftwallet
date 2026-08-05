@@ -29,6 +29,19 @@ public class TokenBalance {
         return t;
     }
 
+    /**
+     * True when this row's command-bound field (the tokenid) is a plain hex id.
+     *
+     * `balance` is the second chain-data ingestion path alongside `coins`, and it carries the same
+     * hazard: the node serialises a JSON-shaped token name unescaped, so a hostile token can inject
+     * a synthetic balance row with an attacker-chosen tokenid. That tokenid reaches `send`,
+     * `tokens` and `coins` commands, which are whitespace-parsed and split on ';'. Rows failing
+     * this are dropped at ingestion and never reach the balance list.
+     */
+    public boolean isWellFormed() {
+        return Util.isValidHexId(tokenid);
+    }
+
     public boolean isMinima() { return Util.isMinima(tokenid); }
 
     public boolean hasIcon() { return meta != null && meta.iconUrl != null && !meta.iconUrl.isEmpty(); }

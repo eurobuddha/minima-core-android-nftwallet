@@ -1,6 +1,6 @@
 {
   "0": "Cb",
-  "1": "TxnBuilder",
+  "1": "Coin",
   "2": "MintView",
   "3": "MainActivity",
   "4": "Design",
@@ -14,7 +14,7 @@
   "12": ".show",
   "13": "NodeTx",
   "14": "ImageLoader",
-  "15": "Coin",
+  "15": "Identicon",
   "16": "TokenBalance",
   "17": "Screen",
   "18": "QrUtil",
@@ -28,16 +28,12 @@
   "26": ".show",
   "27": "HiddenTokens",
   "28": "ImageTools.java",
-  "29": ".showDistribute",
-  "30": "Coin",
+  "29": ".reload",
+  "30": ".fetchCoinsFor",
   "31": "Bitmap",
   "32": "Drawable",
   "33": "ViewGroup",
   "34": "Handler",
   "35": "Uri",
-  "36": "Cb",
-  "37": "Coin",
-  "38": "NodeApi",
-  "39": "Pattern",
-  "40": "Context"
+  "36": "Cb"
 }

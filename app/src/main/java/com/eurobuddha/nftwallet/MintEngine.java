@@ -146,6 +146,7 @@ public final class MintEngine {
             }
             if (strays.isEmpty()) { setPhase(ctx, row, "SPLIT", done); return; }
             JSONObject c = strays.get(0);
+            if (!coinUsable(c)) { setError(ctx, row, "malformed coin in reply - refusing to build a txn", done); return; }
             if (!LocalStore.pendingOk(ctx, c.optString("coinid"), tip)) { done.done("Move pending"); return; }
             LocalStore.setPending(ctx, c.optString("coinid"), tip);
             String id = "mv" + row.optLong("id");
@@ -175,6 +176,7 @@ public final class MintEngine {
             if (units >= row.optInt("size") && bigs.isEmpty()) { setPhase(ctx, row, "STAMP", done); return; }
             if (bigs.isEmpty()) { done.done("Waiting for split coins"); return; }
             JSONObject c = bigs.get(0);
+            if (!coinUsable(c)) { setError(ctx, row, "malformed coin in reply - refusing to build a txn", done); return; }
             if (!LocalStore.pendingOk(ctx, c.optString("coinid"), tip)) { done.done("Split pending"); return; }
             LocalStore.setPending(ctx, c.optString("coinid"), tip);
             splitCoin(node, row, c, Math.min(3, parseInt(c.optString("tokenamount", "1"))),
@@ -221,6 +223,7 @@ public final class MintEngine {
             if (blanks.isEmpty()) { LocalStore.upsert(ctx, row); done.done("Waiting for blank unit coins"); return; }
             int idx = firstFree(row.optInt("size"), used);
             JSONObject c = blanks.get(0);
+            if (!coinUsable(c)) { setError(ctx, row, "malformed coin in reply - refusing to build a txn", done); return; }
             if (!LocalStore.pendingOk(ctx, c.optString("coinid"), tip)) {
                 LocalStore.upsert(ctx, row);
                 done.done("Stamp pending");
@@ -434,6 +437,13 @@ public final class MintEngine {
     private static int firstFree(int size, HashSet<String> used) {
         for (int i = 1; i <= size; i++) if (!used.contains(String.valueOf(i))) return i;
         return size;
+    }
+
+    /** A raw coin from a node reply is only usable if every field we interpolate is well formed. */
+    private static boolean coinUsable(JSONObject c) {
+        return c != null
+                && Util.isValidHexId(c.optString("coinid", ""))
+                && Util.isValidAmount(c.optString("tokenamount", "1"));
     }
 
     private static int parseInt(String s) {

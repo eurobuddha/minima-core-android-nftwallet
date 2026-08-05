@@ -33,12 +33,18 @@ import java.util.List;
  */
 public class MintView extends BaseView {
 
-    /** Base64 budget for embedded NFT art in token metadata (the family's proven wallet-icon size). */
-    private static final int ARTIMAGE_BUDGET = 6000;
+    /** Base64 budget for embedded NFT art in token metadata. */
+    private static final int ARTIMAGE_BUDGET = 9000;
 
-    /** Per-item embedded image budget for State NFT coins — a transfer carries the image twice
-     *  (input proof + recreated output state), so 8000 b64 chars keeps it under the 64 KB TxPoW cap. */
-    private static final int STATE_IMG_BUDGET = 8000;
+    /**
+     * Per-item embedded image budget for State NFT coins.
+     *
+     * A transfer carries the image TWICE (input-coin proof + recreated output state) against a
+     * 64 KB TxPoW cap, which is what bounds this. 12000 base64 chars = 24 KB on the wire for a
+     * transfer, leaving ~40 KB for signatures and proofs — comfortable, and a 50% quality gain
+     * over the original 8000. Raise further only with a real transfer tested on-chain.
+     */
+    private static final int STATE_IMG_BUDGET = 12000;
 
     /** Keys the wallet writes itself — a custom metadata pair may not overwrite them. */
     private static final java.util.Set<String> RESERVED_META = new java.util.HashSet<>(java.util.Arrays.asList(
@@ -715,13 +721,25 @@ public class MintView extends BaseView {
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
             lp.topMargin = dp(4);
             r.setLayoutParams(lp);
+            // Thumbnail of the actual bytes that will be sealed on-chain — the only way to catch a
+            // wrong or sideways image BEFORE it is stamped, which cannot be undone.
+            ImageView thumb = new ImageView(act);
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(dp(44), dp(44));
+            tlp.rightMargin = dp(10);
+            thumb.setLayoutParams(tlp);
+            thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            thumb.setBackgroundColor(Design.surface2());
+            boolean have = colImages.containsKey(idx);
+            if (have) ImageLoader.loadOver(act, "data:image/jpeg;base64," + colImages.get(idx), thumb, null);
+            else thumb.setImageBitmap(null);
+            r.addView(thumb);
+
             TextView n = new TextView(act);
             n.setText("Item #" + idx);
             n.setTextColor(Design.text());
             n.setTextSize(13f);
             r.addView(n, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
             final TextView state = new TextView(act);
-            boolean have = colImages.containsKey(idx);
             state.setText(have ? "✓ " + colImages.get(idx).length() + " b64" : "PICK IMAGE");
             state.setTextColor(have ? Design.success() : Design.accent());
             state.setTextSize(11f);

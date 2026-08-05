@@ -211,6 +211,7 @@ public class SendView extends BaseView {
             quickMode = !"c".equals(v[5]);
             quickTokenid = v[6] == null || v[6].isEmpty() ? Util.MINIMA_TOKENID : v[6];
             paintModeSegment();
+            refresh();   // re-apply mode block visibilities after a theme recreate()
         }
     }
 

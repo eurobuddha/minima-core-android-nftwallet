@@ -398,6 +398,8 @@ public class MainActivity extends AppCompatActivity {
     private void handleErr(String message) {
         if (NodeApi.ERR_NOT_ENABLED.equals(message)) {
             setPaired(false);
+        } else if (NodeApi.ERR_TOO_LONG.equals(message)) {
+            Toast.makeText(this, "The node reply was too large — showing what's loaded.", Toast.LENGTH_SHORT).show();
         } else {
             Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
         }

@@ -84,6 +84,7 @@
         android:visibility="gone">
 
         <TextView
+            android:id="@+id/pairingTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="This wallet is not enabled yet"
@@ -92,6 +93,7 @@
             android:textSize="15sp" />
 
         <TextView
+            android:id="@+id/pairingBody"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"

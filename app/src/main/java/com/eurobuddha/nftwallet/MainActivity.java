@@ -131,7 +131,12 @@ public class MainActivity extends AppCompatActivity {
 
         pairingBanner = findViewById(R.id.pairingBanner);
         blockNo = findViewById(R.id.blockNo);
-        ((Button) findViewById(R.id.openNodeBtn)).setOnClickListener(v -> openMinimaCore());
+        Button openNodeBtn = findViewById(R.id.openNodeBtn);
+        openNodeBtn.setOnClickListener(v -> openMinimaCore());
+        // Theme it like every other primary action — the stock Material tint is off-palette.
+        openNodeBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Design.accent()));
+        openNodeBtn.setTextColor(Design.onAccent());
+        openNodeBtn.setAllCaps(false);
 
         // Design-language toggle: family Dark ↔ old-wallet Clean Light (all four modes in Settings).
         TextView designToggle = findViewById(R.id.designToggle);
@@ -210,6 +215,8 @@ public class MainActivity extends AppCompatActivity {
         designToggle.setTextColor(Design.accent());
         designToggle.setText("◐ " + designTag());
         pairingBanner.setBackgroundColor(Design.accentSoft());
+        ((TextView) findViewById(R.id.pairingTitle)).setTextColor(Design.accent());
+        ((TextView) findViewById(R.id.pairingBody)).setTextColor(Design.text());
         tabs.setBackgroundColor(Design.bg());
         tabs.setTabTextColors(Design.dim(), Design.heading());   // dapp: active tab text is --heading
         tabs.setSelectedTabIndicatorColor(Design.accent());

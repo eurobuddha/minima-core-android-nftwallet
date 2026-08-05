@@ -95,8 +95,8 @@
     "semantic_hash": "01b077804824d328ce531bd1910d3bb8"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/MainActivity.java": {
-    "mtime": 1785941464.867892,
-    "ast_hash": "027d14f74d1f8ff06283c55988a26da5",
+    "mtime": 1785942111.6227837,
+    "ast_hash": "abc1ab604caf0d4c796d0d8a3fb168ab",
     "semantic_hash": ""
   },
   "app/src/main/java/com/eurobuddha/nftwallet/MainPager.java": {
@@ -105,8 +105,8 @@
     "semantic_hash": "f00a9d751627a0c3b26537be2d90c114"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/MintEngine.java": {
-    "mtime": 1785940766.445362,
-    "ast_hash": "ca9f1847a762e0163d5fd803e98c4788",
+    "mtime": 1785942111.6248333,
+    "ast_hash": "be305648c6da16fa550d464c8d5ff2df",
     "semantic_hash": ""
   },
   "app/src/main/java/com/eurobuddha/nftwallet/MintView.java": {
@@ -135,8 +135,8 @@
     "semantic_hash": "e074a7afa0c60973c96dbd9b6ff0d97b"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/SendView.java": {
-    "mtime": 1785940292.3732238,
-    "ast_hash": "36ba38a0ab3093c3d26c36cb9d318955",
+    "mtime": 1785942111.623538,
+    "ast_hash": "44469156bb3fe8455234b60f55edc613",
     "semantic_hash": ""
   },
   "app/src/main/java/com/eurobuddha/nftwallet/SettingsDialog.java": {
@@ -155,9 +155,9 @@
     "semantic_hash": ""
   },
   "app/src/main/java/com/eurobuddha/nftwallet/TokenBalance.java": {
-    "mtime": 1785937223.7677336,
-    "ast_hash": "80bd6cec74b26cda4a021a46a9065982",
-    "semantic_hash": "80bd6cec74b26cda4a021a46a9065982"
+    "mtime": 1785942111.6217194,
+    "ast_hash": "c251edc092b1b1587ac9ea49203c87b1",
+    "semantic_hash": ""
   },
   "app/src/main/java/com/eurobuddha/nftwallet/TokenMeta.java": {
     "mtime": 1785937874.5657365,
@@ -215,8 +215,8 @@
     "semantic_hash": "baea9d557d0955cba7288b6a04c1aa5e"
   },
   "app/src/test/java/com/eurobuddha/nftwallet/WalletGuardsTest.java": {
-    "mtime": 1785941534.947668,
-    "ast_hash": "5747060c67cbb792f241a1753a47d853",
+    "mtime": 1785942133.7312205,
+    "ast_hash": "1bf055e12b79e24fd51d3f49e406206d",
     "semantic_hash": ""
   },
   "CLAUDE.md": {

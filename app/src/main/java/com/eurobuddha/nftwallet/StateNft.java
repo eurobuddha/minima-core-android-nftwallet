@@ -196,9 +196,15 @@ public final class StateNft {
 
     public static List<String> transferCommands(String txn, String tokenid, JSONObject coin, String to) {
         List<String> cmds = new ArrayList<>();
+        // Pre-delete: the txn id is deterministic per coin, so a previous abnormal exit would
+        // otherwise leave a stale txn and fail txncreate on the next attempt.
+        cmds.add("txndelete id:" + txn);
         cmds.add("txncreate id:" + txn);
         cmds.add("txninput id:" + txn + " coinid:" + coin.optString("coinid"));
-        cmds.add("txnoutput id:" + txn + " amount:1 address:" + to + " tokenid:" + tokenid + " storestate:true");
+        // The unit's real amount — hardcoding 1 builds an unbalanced txn on any coin holding more,
+        // which posts "fine" and is silently rejected on-chain.
+        cmds.add("txnoutput id:" + txn + " amount:" + coin.optString("tokenamount", "1")
+                + " address:" + to + " tokenid:" + tokenid + " storestate:true");
         JSONArray st = coin.optJSONArray("state");
         if (st != null) {
             for (int i = 0; i < st.length(); i++) {
@@ -206,6 +212,8 @@ public final class StateNft {
                 cmds.add("txnstate id:" + txn + " port:" + s.opt("port") + " value:" + s.opt("data"));
             }
         }
+        // Balance check BEFORE signing — an unbalanced txn posts "fine" and is rejected on-chain.
+        cmds.add("txncheck id:" + txn);
         cmds.add("txnsign id:" + txn + " publickey:auto");
         cmds.add("txnbasics id:" + txn);
         cmds.add("txnpost id:" + txn);
@@ -214,6 +222,7 @@ public final class StateNft {
 
     public static List<String> buryCommands(String txn, String tokenid, String creatorPk, JSONObject coin, boolean preserve) {
         List<String> cmds = new ArrayList<>();
+        cmds.add("txndelete id:" + txn);
         cmds.add("txncreate id:" + txn);
         cmds.add("txninput id:" + txn + " coinid:" + coin.optString("coinid"));
         cmds.add("txnoutput id:" + txn + " amount:" + coin.optString("tokenamount", "1")
@@ -227,6 +236,7 @@ public final class StateNft {
                 }
             }
         }
+        cmds.add("txncheck id:" + txn);
         cmds.add("txnsign id:" + txn + " publickey:auto");
         if (!creatorPk.isEmpty() && (!preserve || stamped(coin) == null)) {
             cmds.add("txnsign id:" + txn + " publickey:" + creatorPk);

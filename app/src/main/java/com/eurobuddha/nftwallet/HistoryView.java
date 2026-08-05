@@ -40,6 +40,9 @@ public class HistoryView extends BaseView {
     private boolean moreAvailable = false;
     /** Row filter: null = all, else "sent" / "received" / "self". */
     private String filter = null;
+    /** Node-side offset reached so far — counts RAW txpows (incl. skipped non-transactions),
+     *  so "Load older" never re-requests a page whose entries were all filtered out. */
+    private int nextOffset = 0;
 
     public HistoryView(MainActivity a) {
         super(a, R.layout.view_history);
@@ -58,7 +61,7 @@ public class HistoryView extends BaseView {
         fetchPage(0);
     }
 
-    private void loadOlder() { if (!fetching) fetchPage(act.history().nodeTxCount()); }
+    private void loadOlder() { if (!fetching) fetchPage(nextOffset); }
 
     /** One adaptive `history` page: shrink (8→4→2→1) + retry under the 256 KB cap; persist new rows; re-render. */
     private void fetchPage(final int offset) {
@@ -75,6 +78,7 @@ public class HistoryView extends BaseView {
                 lastFetchBlock = act.chainBlock();
                 JSONArray details = resp.optJSONArray("details");
                 int got = txpows.length();
+                if (offset + got > nextOffset) nextOffset = offset + got;
                 for (int i = 0; i < got; i++) {
                     JSONObject t = txpows.optJSONObject(i);
                     if (t == null || !t.optBoolean("istransaction", false)) continue;

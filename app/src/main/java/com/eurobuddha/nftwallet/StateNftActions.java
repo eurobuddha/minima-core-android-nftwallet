@@ -34,6 +34,7 @@ public final class StateNftActions {
 
     /** Ask for a recipient, confirm, then post the identity-preserving transfer. */
     public static void transferDialog(MainActivity act, String tokenid, String displayName, JSONObject coin) {
+        if (!idsSafe(act, tokenid, coin)) return;
         if (StateNft.stamped(coin) == null) {
             // An unstamped unit still carries the sentinel — the creator bypass is LIVE on it, so a
             // recipient would hold a coin the creator can rewrite; and an active mint's MOVE phase
@@ -141,6 +142,7 @@ public final class StateNftActions {
     /** Typed-confirmation bury to the graveyard address (irreversible). Stamped units only. */
     public static void buryDialog(MainActivity act, String tokenid, String collectionName,
                                   String displayName, JSONObject coin) {
+        if (!idsSafe(act, tokenid, coin)) return;
         if (StateNft.stamped(coin) == null) {
             new androidx.appcompat.app.AlertDialog.Builder(act)
                     .setTitle("Cannot bury")
@@ -238,7 +240,11 @@ public final class StateNftActions {
         final Handler h = new Handler(Looper.getMainLooper());
         final int[] tries = {0};
         final Runnable[] poll = new Runnable[1];
-        poll[0] = () -> act.node().cmd("coins relevant:true tokenid:" + tokenid, new NodeApi.Cb() {
+        poll[0] = () -> {
+            // Stop when the activity is gone — a recreated activity confirms via balances anyway,
+            // and polling a released NodeApi for 7 minutes just leaks the old activity + dialog.
+            if (act.isFinishing() || act.isDestroyed()) return;
+            act.node().cmd("coins relevant:true tokenid:" + tokenid, new NodeApi.Cb() {
             @Override public void onResult(JSONObject json) {
                 boolean present = false;
                 org.json.JSONArray arr = json.optJSONArray("response");
@@ -256,7 +262,19 @@ public final class StateNftActions {
                 }
                 reschedule();
             }
-            @Override public void onError(String message) { reschedule(); }
+            @Override public void onError(String message) {
+                if (NodeApi.ERR_TOO_LONG.equals(message)) {
+                    // The reply was capped, so absence proves nothing — say so instead of
+                    // polling to a false "may have been rejected".
+                    setMessage(progress, "Posted, but this wallet can't confirm it here — the node's "
+                            + "coin list for this token is too large to fetch. Check the item in "
+                            + "Gallery in a few minutes.");
+                    makeDismissable(progress);
+                    act.reload();
+                    return;
+                }
+                reschedule();
+            }
             private void reschedule() {
                 if (++tries[0] >= WATCH_TRIES) {
                     setMessage(progress, "Still unconfirmed after " + WATCH_TRIES
@@ -268,10 +286,28 @@ public final class StateNftActions {
                 h.postDelayed(poll[0], WATCH_INTERVAL_MS);
             }
         });
+        };
         h.postDelayed(poll[0], WATCH_INTERVAL_MS);
     }
 
     // ===================== plumbing =====================
+
+    /**
+     * Both ids are replayed into node commands, and both arrive as chain data — the node emits a
+     * JSON-shaped token name unescaped, so a hostile token can inject synthetic id strings into a
+     * balance/coins reply. Anything that isn't plain hex never reaches a command.
+     */
+    private static boolean idsSafe(MainActivity act, String tokenid, JSONObject coin) {
+        String coinid = coin == null ? "" : coin.optString("coinid", "");
+        if (Util.isValidHexId(tokenid) && Util.isValidHexId(coinid)) return true;
+        new androidx.appcompat.app.AlertDialog.Builder(act)
+                .setTitle("Refusing this coin")
+                .setMessage("Its token or coin id is not a plain hex value. That should be impossible "
+                        + "for a genuine coin, so this wallet will not build a transaction from it.")
+                .setPositiveButton("Close", null)
+                .show();
+        return false;
+    }
 
     private static final NodeApi.Cb NOOP = new NodeApi.Cb() {
         @Override public void onResult(JSONObject json) {}

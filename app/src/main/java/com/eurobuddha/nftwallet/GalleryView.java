@@ -205,6 +205,7 @@ public class GalleryView extends BaseView {
 
     /** Fetch the token record once per tokenid (script decides state-vs-regular; meta feeds images). */
     private void ensureRecord(final String tokenid) {
+        if (!Util.isValidHexId(tokenid)) return;   // chain-supplied id — never interpolate unvetted
         if (tokenRecords.containsKey(tokenid) || fetching.contains(tokenid)) return;
         fetching.add(tokenid);
         act.node().cmd("tokens tokenid:" + tokenid, new NodeApi.Cb() {
@@ -494,17 +495,22 @@ public class GalleryView extends BaseView {
         l.setTextSize(12f);
         r.addView(l, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         TextView v = new TextView(act);
-        v.setText("↗ open");
-        v.setTextColor(Design.accent());
+        boolean web = Util.isWebUrl(url);
+        v.setText(web ? "↗ open" : "blocked");
+        v.setTextColor(web ? Design.accent() : Design.red());
         v.setTextSize(12f);
         v.setGravity(Gravity.END);
         r.addView(v);
-        r.setOnClickListener(x -> {
-            try { act.startActivity(new android.content.Intent(
-                    android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))); }
-            catch (Exception ignore) {}
-        });
+        r.setOnClickListener(x -> Util.openWebUrl(act, url));
         box.addView(r);
+        TextView dest = new TextView(act);
+        dest.setText(url);
+        dest.setTextColor(Design.dim2());
+        dest.setTextSize(10f);
+        dest.setTypeface(Typeface.MONOSPACE);
+        dest.setMaxLines(2);
+        dest.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+        box.addView(dest);
     }
 
     private static int parseInt(String s) {

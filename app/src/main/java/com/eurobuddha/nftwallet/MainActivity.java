@@ -141,6 +141,21 @@ public class MainActivity extends AppCompatActivity {
         settingsBtn.setOnClickListener(v -> SettingsDialog.show(this));
         settingsBtn.setTextColor(Design.accent());
 
+        // Construct the IPC BEFORE the views/tab restore: restoring the saved tab fires the
+        // tab-selected listener synchronously, and Receive/History immediately call node.cmd().
+        node = new NodeApi(this, enabled -> {
+            if (enabled) {
+                setPaired(true);
+                requestReload();
+            } else {
+                setPaired(false);
+                schedulePairingRetry();
+            }
+        });
+        // The REGISTER broadcast is a one-shot — lost if Minima Core isn't running yet. Retry
+        // until the first pairing signal arrives (reRegister() is a no-op while writes are in flight).
+        schedulePairingRetry();
+
         views = new BaseView[]{
                 new BalancesView(this),
                 new GalleryView(this),
@@ -200,16 +215,6 @@ public class MainActivity extends AppCompatActivity {
         tabs.setSelectedTabIndicatorColor(Design.accent());
         tabs.setSelectedTabIndicatorHeight((int) (3 * getResources().getDisplayMetrics().density));  // 3px inset bar
 
-        // Construct the IPC: register reply drives the pairing banner.
-        node = new NodeApi(this, enabled -> {
-            if (enabled) {
-                setPaired(true);
-                requestReload();
-            } else {
-                setPaired(false);
-            }
-        });
-
         // Live updates: the node broadcasts {event,data} to enabled apps. Refresh on
         // NEWBLOCK / NEWBALANCE.
         notifyReceiver = new BroadcastReceiver() {
@@ -242,10 +247,26 @@ public class MainActivity extends AppCompatActivity {
         if (currentTab() == TAB_HISTORY) views[TAB_HISTORY].onShown();
     }
 
+    // Re-send the one-shot REGISTER every 10 s until the node answers (see NodeApi.reRegister).
+    private static final long PAIRING_RETRY_MS = 10000;
+    private final Runnable pairingRetry = new Runnable() {
+        @Override public void run() {
+            if (node == null || node.isEnabled()) return;
+            node.reRegister();
+            ui.postDelayed(this, PAIRING_RETRY_MS);
+        }
+    };
+
+    private void schedulePairingRetry() {
+        ui.removeCallbacks(pairingRetry);
+        ui.postDelayed(pairingRetry, PAIRING_RETRY_MS);
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
         ui.removeCallbacks(reloadTask);
+        ui.removeCallbacks(pairingRetry);
         if (node != null) node.onDestroy();
         if (notifyReceiver != null) {
             try { unregisterReceiver(notifyReceiver); } catch (Exception ignored) {}
@@ -275,39 +296,7 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onError(String message) { handleErr(message); }
         });
 
-        node.cmd("coins relevant:true", new NodeApi.Cb() {
-            @Override public void onResult(JSONObject json) {
-                setPaired(true);
-                coins.clear();
-                JSONArray arr = json.optJSONArray("response");
-                if (arr != null) {
-                    for (int i = 0; i < arr.length(); i++) {
-                        JSONObject c = arr.optJSONObject(i);
-                        if (c != null) coins.add(Coin.from(c));
-                    }
-                }
-                // then the sendable subset
-                node.cmd("coins relevant:true sendable:true", new NodeApi.Cb() {
-                    @Override public void onResult(JSONObject json2) {
-                        sendableIds.clear();
-                        JSONArray a2 = json2.optJSONArray("response");
-                        if (a2 != null) {
-                            for (int i = 0; i < a2.length(); i++) {
-                                JSONObject c = a2.optJSONObject(i);
-                                if (c != null) sendableIds.add(c.optString("coinid", ""));
-                            }
-                        }
-                        for (Coin c : coins) c.sendable = sendableIds.contains(c.coinid);
-                        pruneSelection();
-                        refreshAll();
-                        // Advance any running multi-batch Distribute job (change coin may have confirmed).
-                        if (distribute != null) distribute.onCoinsUpdated();
-                    }
-                    @Override public void onError(String message) { refreshAll(); }
-                });
-            }
-            @Override public void onError(String message) { handleErr(message); }
-        });
+        loadCoins();
 
         node.cmd("balance", new NodeApi.Cb() {
             @Override public void onResult(JSONObject json) {
@@ -344,6 +333,88 @@ public class MainActivity extends AppCompatActivity {
 
         // Advance any in-flight StateNFT collection mint — block cadence is the phase-machine clock.
         mintEngineTick();
+    }
+
+    /**
+     * The coin list, fetched in a way that survives the 256 KB IPC cap.
+     *
+     * This wallet's own State NFT collections embed up to 8000 base64 chars of art PER COIN, so a
+     * couple of collections can push an unbounded {@code coins relevant:true} over the cap — and an
+     * over-cap reply comes back as the node's stub (ERR_TOO_LONG), leaving the wallet with NO coins
+     * at all: empty Gallery, empty coin control, no explanation. So: try the whole list once, and on
+     * an over-cap reply fall back to fetching per token from the (small) balance list, which keeps
+     * each reply to one token's coins. Mirrors the adaptive-paging rule the History tab follows.
+     */
+    private void loadCoins() {
+        node.cmd("coins relevant:true", new NodeApi.Cb() {
+            @Override public void onResult(JSONObject json) {
+                setPaired(true);
+                coins.clear();
+                JSONArray arr = json.optJSONArray("response");
+                if (arr != null) {
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject c = arr.optJSONObject(i);
+                        if (c != null) coins.add(Coin.from(c));
+                    }
+                }
+                loadSendable();
+            }
+            @Override public void onError(String message) {
+                if (NodeApi.ERR_TOO_LONG.equals(message)) { loadCoinsPerToken(); return; }
+                handleErr(message);
+            }
+        });
+    }
+
+    /** Fallback: one bounded `coins … tokenid:` per known token, accumulated into the coin list. */
+    private void loadCoinsPerToken() {
+        final java.util.List<String> tokenids = new ArrayList<>();
+        for (TokenBalance b : balances) if (Util.isValidHexId(b.tokenid)) tokenids.add(b.tokenid);
+        coins.clear();
+        if (tokenids.isEmpty()) { loadSendable(); return; }
+        fetchCoinsFor(tokenids, 0);
+    }
+
+    private void fetchCoinsFor(final java.util.List<String> tokenids, final int i) {
+        if (i >= tokenids.size()) { loadSendable(); return; }
+        node.cmd("coins relevant:true tokenid:" + tokenids.get(i), new NodeApi.Cb() {
+            @Override public void onResult(JSONObject json) {
+                JSONArray arr = json.optJSONArray("response");
+                if (arr != null) {
+                    for (int k = 0; k < arr.length(); k++) {
+                        JSONObject c = arr.optJSONObject(k);
+                        if (c != null) coins.add(Coin.from(c));
+                    }
+                }
+                fetchCoinsFor(tokenids, i + 1);
+            }
+            @Override public void onError(String message) {
+                // One oversized token's coins are skipped rather than losing the whole list.
+                fetchCoinsFor(tokenids, i + 1);
+            }
+        });
+    }
+
+    /** The sendable subset marks which coins can be spent (script coins are never sendable). */
+    private void loadSendable() {
+        node.cmd("coins relevant:true sendable:true", new NodeApi.Cb() {
+            @Override public void onResult(JSONObject json2) {
+                sendableIds.clear();
+                JSONArray a2 = json2.optJSONArray("response");
+                if (a2 != null) {
+                    for (int i = 0; i < a2.length(); i++) {
+                        JSONObject c = a2.optJSONObject(i);
+                        if (c != null) sendableIds.add(c.optString("coinid", ""));
+                    }
+                }
+                for (Coin c : coins) c.sendable = sendableIds.contains(c.coinid);
+                pruneSelection();
+                refreshAll();
+                // Advance any running multi-batch Distribute job (change coin may have confirmed).
+                if (distribute != null) distribute.onCoinsUpdated();
+            }
+            @Override public void onError(String message) { refreshAll(); }
+        });
     }
 
     /** scripts (~27 KB) lists the wallet's stable default-address pool (64 pre-generated), so it barely

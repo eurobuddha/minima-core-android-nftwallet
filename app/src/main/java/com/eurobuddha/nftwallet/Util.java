@@ -16,6 +16,56 @@ public final class Util {
         return a != null && a.matches("^(0x[0-9a-fA-F]{64}|Mx[A-Za-z0-9]{40,118})$");
     }
 
+    /**
+     * A 32-byte hex id (tokenid / coinid / txpowid / publickey / script address), or the Minima
+     * sentinel "0x00".
+     *
+     * SECURITY: ids reaching us are chain-supplied. The node serialises a JSON-shaped token name
+     * into its replies raw, so a token whose on-chain name starts with '{' can inject synthetic
+     * fields — including an attacker-chosen "tokenid"/"coinid" string — into a balance or coins
+     * reply. Node commands are whitespace-parsed and multi-commands split on ';', so an unvetted
+     * id interpolated into a command is arbitrary command execution. Gate EVERY id with this
+     * before it goes anywhere near a command string.
+     */
+    public static boolean isValidHexId(String id) {
+        return id != null && (MINIMA_TOKENID.equals(id) || id.matches("^0x[0-9a-fA-F]{2,64}$"));
+    }
+
+    /** True only for a plain http(s) link — the only scheme we hand to ACTION_VIEW. */
+    public static boolean isWebUrl(String url) {
+        if (url == null) return false;
+        String u = url.trim().toLowerCase();
+        return (u.startsWith("http://") || u.startsWith("https://")) && !u.contains(" ");
+    }
+
+    /**
+     * Open a chain-supplied URL, confirming the destination first. Metadata URLs are attacker
+     * controlled: an arbitrary scheme would fire an implicit intent into any installed app's
+     * deep-link handler, so anything that isn't http(s) is refused outright.
+     */
+    public static void openWebUrl(final android.content.Context ctx, final String url) {
+        if (!isWebUrl(url)) {
+            android.widget.Toast.makeText(ctx,
+                    "This link isn't a plain web address — not opening it.",
+                    android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        new androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle("Open this link?")
+                .setMessage(url + "\n\nThis address comes from the token's metadata, not from Minima.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Open", (d, w) -> {
+                    try {
+                        ctx.startActivity(new android.content.Intent(
+                                android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)));
+                    } catch (Exception e) {
+                        android.widget.Toast.makeText(ctx, "No app can open that link.",
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .show();
+    }
+
     /** Number of significant decimal places in an amount (0 for integers). */
     public static int decimalPlaces(BigDecimal bd) {
         return Math.max(0, bd.stripTrailingZeros().scale());

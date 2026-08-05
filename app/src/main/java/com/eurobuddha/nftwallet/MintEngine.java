@@ -91,6 +91,7 @@ public final class MintEngine {
             return;
         }
         String tid = cands.get(i);
+        if (!Util.isValidHexId(tid)) { findMatchingToken(ctx, node, row, cands, i + 1, matches, tip, done); return; }
         cmd(node, "tokens tokenid:" + tid, new Cb() {
             @Override public void ok(JSONObject res) {
                 JSONObject t = res.optJSONObject("response");
@@ -311,6 +312,8 @@ public final class MintEngine {
     }
 
     private static void tokenCoins(NodeApi node, String tid, CoinsCb ok, java.util.function.Consumer<String> fail) {
+        // The tokenid is adopted from a balance row (chain data) — never interpolate it unvetted.
+        if (!Util.isValidHexId(tid)) { fail.accept("bad tokenid - refusing to build a command"); return; }
         cmd(node, "coins relevant:true tokenid:" + tid, new Cb() {
             @Override public void ok(JSONObject res) {
                 JSONArray arr = res.optJSONArray("response");
@@ -326,7 +329,16 @@ public final class MintEngine {
                 if (json.optBoolean("status", false)) cb.ok(json);
                 else cb.fail(json.optString("error", json.optString("response", command + " failed")));
             }
-            @Override public void onError(String message) { cb.fail(message); }
+            @Override public void onError(String message) {
+                if (NodeApi.ERR_TOO_LONG.equals(message)) {
+                    // Transient, not a mint failure: the coin list for this token exceeded the IPC
+                    // cap this tick. Reporting it as an error would stick in the row and be retried
+                    // as a "failure" every block; say what it is and let the next tick try again.
+                    cb.fail("node reply too large this tick - will retry");
+                    return;
+                }
+                cb.fail(message);
+            }
         });
     }
 

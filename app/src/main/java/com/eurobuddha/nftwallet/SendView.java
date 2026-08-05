@@ -42,6 +42,9 @@ public class SendView extends BaseView {
     /** Quick-mode selected token (tokenid); defaults to Minima. */
     private String quickTokenid = Util.MINIMA_TOKENID;
 
+    /** True while a send/build-sign-post is in flight — refresh() must not re-enable the button. */
+    private boolean sending = false;
+
     private boolean changeTouched = false;     // user edited the change field
     private boolean settingChange = false;     // guard for programmatic change-field writes
     private boolean changeFetching = false;
@@ -147,7 +150,7 @@ public class SendView extends BaseView {
             boolean minima = Util.isMinima(quickTokenid);
             burnInput.setEnabled(true);   // burn rides alongside any send in quick mode
             burnNote.setVisibility(View.GONE);
-            previewBtn.setEnabled(true);
+            previewBtn.setEnabled(!sending);
             if (!minima && b != null && b.isNft()) {
                 setNote(splitNote, "NFTs are indivisible — split does not apply.", R.color.ux_subtext);
             } else {
@@ -168,7 +171,7 @@ public class SendView extends BaseView {
             previewBtn.setEnabled(false);
             return;
         }
-        previewBtn.setEnabled(true);
+        previewBtn.setEnabled(!sending);
 
         String tokenName = sel.get(0).tokenName;
         boolean minima = Util.isMinima(act.selectedTokenid());
@@ -412,8 +415,12 @@ public class SendView extends BaseView {
         if (amount.signum() <= 0) { setNote(amountNote, "Amount must be greater than zero.", R.color.ux_error); return; }
         BigDecimal sendable = BigDecimal.ZERO;
         try { if (tok != null) sendable = new BigDecimal(tok.sendable); } catch (Exception ignored) {}
-        if (tok != null && amount.compareTo(sendable) > 0) {
-            setNote(amountNote, "Max sendable is " + Util.tidyAmount(tok.sendable) + ".", R.color.ux_error); return;
+        // For Minima the burn is spent from the same balance — amount + burn must fit.
+        BigDecimal needed = minima ? amount.add(burn) : amount;
+        if (tok != null && needed.compareTo(sendable) > 0) {
+            setNote(amountNote, minima && burn.signum() > 0
+                    ? "Amount + burn exceeds sendable (" + Util.tidyAmount(tok.sendable) + ")."
+                    : "Max sendable is " + Util.tidyAmount(tok.sendable) + ".", R.color.ux_error); return;
         }
         int dec = act.tokenDecimals(quickTokenid);
         if (dec >= 0 && Util.decimalPlaces(amount) > dec) { setNote(amountNote, "This token supports at most " + dec + " decimals.", R.color.ux_error); return; }
@@ -486,6 +493,7 @@ public class SendView extends BaseView {
     /** Posts the node-level `send` and reports the outcome. */
     private void runQuickSend(final String recipient, final String amountStr,
                               final String burnStr, final int split, final String tokenName) {
+        sending = true;
         previewBtn.setEnabled(false);
         status("Sending…", true);
         StringBuilder cmd = new StringBuilder("send address:").append(recipient)
@@ -495,6 +503,7 @@ public class SendView extends BaseView {
         if (split > 1) cmd.append(" split:").append(split);
         act.node().cmd(cmd.toString(), new NodeApi.Cb() {
             @Override public void onResult(JSONObject json) {
+                sending = false;
                 previewBtn.setEnabled(true);
                 if (json.optBoolean("status", false)) {
                     status("✓ Sent — " + Util.tidyAmount(amountStr) + " " + tokenName + " to "
@@ -510,6 +519,7 @@ public class SendView extends BaseView {
                 }
             }
             @Override public void onError(String message) {
+                sending = false;
                 previewBtn.setEnabled(true);
                 if (NodeApi.ERR_NOT_ENABLED.equals(message)) message = "Enable this wallet in Minima Core → Apps first.";
                 status("Failed: " + message, false);
@@ -569,6 +579,7 @@ public class SendView extends BaseView {
     private void buildSend(List<Coin> sel, final String recipient, final String amountStr,
                            String changeAddr, String changeStr, String burnStr,
                            final String tokenid, final String tokenName) {
+        sending = true;
         previewBtn.setEnabled(false);
         status("Recording audit row…", true);
 
@@ -595,6 +606,7 @@ public class SendView extends BaseView {
                 burnInput.setText("");
                 settingChange = true; changeInput.setText(""); settingChange = false;
                 changeTouched = false;
+                sending = false;
                 previewBtn.setEnabled(true);
                 act.clearSelection();
                 act.reload();
@@ -603,6 +615,7 @@ public class SendView extends BaseView {
                 if (NodeApi.ERR_NOT_ENABLED.equals(message)) message = "Enable this wallet in Minima Core → Apps first.";
                 act.history().update(internalid, HistoryDb.STATUS_ERROR, null, message);
                 status("Failed: " + message, false);
+                sending = false;
                 previewBtn.setEnabled(true);
             }
         }).onProgress(label -> status(label, true)).run();
@@ -671,11 +684,11 @@ public class SendView extends BaseView {
         try { return Integer.parseInt(s); } catch (Exception e) { return -1; }
     }
 
-    /** Shows an inline validation note under a field in the given color. */
+    /** Shows an inline validation note under a field; colors track the active Design mode. */
     private void setNote(TextView note, String msg, int colorRes) {
         note.setVisibility(View.VISIBLE);
         note.setText(msg);
-        note.setTextColor(act.getColor(colorRes));
+        note.setTextColor(colorRes == R.color.ux_error ? Design.red() : Design.dim());
     }
 
     /** Shows the bottom status line; green on ok, red on failure. */

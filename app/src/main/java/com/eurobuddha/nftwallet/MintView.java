@@ -71,6 +71,7 @@ public class MintView extends BaseView {
     private EditText nName, nEditions, nDesc, nExtUrl, nUrl, nCreator, nWebv, nBurn;
     private TextView nStatus, nImageNote, nModeEmbed, nModeUrl;
     private ImageView nPreview;
+    private LinearLayout nUrlBlock;
     private CheckBox nSign;
     private boolean nftEmbedMode = true;
     private String nftImageB64 = "";
@@ -83,6 +84,14 @@ public class MintView extends BaseView {
 
     @Override
     public void refresh() {
+        // A live form already on screen keeps its focus/keyboard: every reload (per new block)
+        // calls refresh(), and detach/re-attach of the focused EditText would yank the keyboard
+        // away mid-typing. Forms are static — nothing in them depends on wallet state.
+        if ((screen == Screen.TOKEN && tokenForm != null && tokenForm.getParent() == container)
+                || (screen == Screen.NFT && nftForm != null && nftForm.getParent() == container)
+                || (screen == Screen.COLLECTION && colForm != null && colForm.getParent() == container)) {
+            return;
+        }
         container.removeAllViews();
         switch (screen) {
             case TOKEN:      container.addView(tokenForm()); break;
@@ -294,7 +303,7 @@ public class MintView extends BaseView {
         if ((err = badValue(desc, false)) != null) { status(tStatus, "Description: " + err, false); return; }
 
         final String url = tUrl.getText().toString().trim();
-        if (!url.isEmpty() && badUrl(url)) { status(tStatus, "Icon URL must be a plain http(s) or ipfs link.", false); return; }
+        if (!url.isEmpty() && badUrl(url)) { status(tStatus, "Icon URL must be a plain http(s) link.", false); return; }
         final String webv = tWebv.getText().toString().trim();
         if (!webv.isEmpty() && badUrl(webv)) { status(tStatus, "Web validation must be a plain https link.", false); return; }
 
@@ -391,7 +400,10 @@ public class MintView extends BaseView {
         nImageNote.setPadding(0, dp(6), 0, 0);
         modeCol.addView(nImageNote);
 
-        nUrl = addField(nftForm, "Image URL (URL mode)", "https://…  or  ipfs://…", InputType.TYPE_TEXT_VARIATION_URI);
+        nUrlBlock = new LinearLayout(act);
+        nUrlBlock.setOrientation(LinearLayout.VERTICAL);
+        nftForm.addView(nUrlBlock);
+        nUrl = addField(nUrlBlock, "Image URL (URL mode)", "https://…  or  ipfs://…", InputType.TYPE_TEXT_VARIATION_URI);
         nName = addField(nftForm, "Name *", "My NFT", InputType.TYPE_CLASS_TEXT);
         LinearLayout duo = new LinearLayout(act);
         duo.setOrientation(LinearLayout.HORIZONTAL);
@@ -437,7 +449,7 @@ public class MintView extends BaseView {
         nModeEmbed.setBackgroundColor(embed ? Design.accent() : Design.surface2());
         nModeUrl.setTextColor(!embed ? Design.onAccent() : Design.dim());
         nModeUrl.setBackgroundColor(!embed ? Design.accent() : Design.surface2());
-        nUrl.setVisibility(embed ? View.GONE : View.VISIBLE);
+        nUrlBlock.setVisibility(embed ? View.GONE : View.VISIBLE);
         nImageNote.setText(embed
                 ? (nftImageB64.isEmpty()
                     ? "Tap the square to pick an image — compressed and stored on-chain (≤" + ARTIMAGE_BUDGET + " b64 chars)."
@@ -1185,8 +1197,12 @@ public class MintView extends BaseView {
      */
     private String badValue(String s, boolean required) {
         if (s == null || s.isEmpty()) return required ? "required." : null;
-        if (s.contains("\"") || s.contains("\\") || s.contains(";") || s.contains("\n")) {
-            return "may not contain quotes, backslashes or semicolons.";
+        // Braces/brackets break the node's JSON-parameter tokenizer (it counts them without string
+        // awareness), truncating name:{...} — and for collections the broken command would be
+        // re-posted every block from the persisted row with no way to edit it.
+        if (s.contains("\"") || s.contains("\\") || s.contains(";") || s.contains("\n")
+                || s.contains("{") || s.contains("}") || s.contains("[") || s.contains("]")) {
+            return "may not contain quotes, backslashes, semicolons or brackets.";
         }
         return null;
     }

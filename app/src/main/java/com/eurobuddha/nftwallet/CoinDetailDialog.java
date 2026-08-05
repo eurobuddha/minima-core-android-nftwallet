@@ -114,7 +114,8 @@ public final class CoinDetailDialog {
                 .setPositiveButton("Close", null)
                 .show();
 
-        if (!Util.isMinima(c.tokenid) && !c.state.isEmpty() && isMine(act, c)) {
+        if (!Util.isMinima(c.tokenid) && Util.isValidHexId(c.tokenid)
+                && !c.state.isEmpty() && isMine(act, c)) {
             act.node().cmd("tokens tokenid:" + c.tokenid, new NodeApi.Cb() {
                 @Override public void onResult(org.json.JSONObject json) {
                     Object resp = json.opt("response");

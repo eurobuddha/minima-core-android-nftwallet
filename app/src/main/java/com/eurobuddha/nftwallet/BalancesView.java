@@ -385,6 +385,7 @@ public class BalancesView extends BaseView {
 
     /** Fetch the token record (script, total, creation) and add a collapsible contract section. */
     private void loadContract(TokenBalance b, final LinearLayout into) {
+        if (!Util.isValidHexId(b.tokenid)) return;   // chain-supplied id — never interpolate unvetted
         act.node().cmd("tokens tokenid:" + b.tokenid, new NodeApi.Cb() {
             @Override public void onResult(org.json.JSONObject json) {
                 Object resp = json.opt("response");
@@ -437,6 +438,7 @@ public class BalancesView extends BaseView {
     private static final int MAX_COIN_ROWS = 100;
 
     private void loadCoins(TokenBalance b, final LinearLayout into) {
+        if (!Util.isValidHexId(b.tokenid)) return;
         act.node().cmd("coins relevant:true tokenid:" + b.tokenid, new NodeApi.Cb() {
             @Override public void onResult(org.json.JSONObject json) {
                 org.json.JSONArray arr = json.optJSONArray("response");
@@ -532,17 +534,27 @@ public class BalancesView extends BaseView {
         return t;
     }
 
-    private LinearLayout linkRow(String label, String url) {
+    /** Label + the ACTUAL destination + open action. Chain-supplied URLs: http(s) only, shown
+     *  in full so a phishing target isn't hidden behind "open", and confirmed before leaving. */
+    private LinearLayout linkRow(String label, final String url) {
         LinearLayout r = new LinearLayout(act);
-        r.setOrientation(LinearLayout.HORIZONTAL); r.setPadding(0, dp(8), 0, dp(8));
+        r.setOrientation(LinearLayout.VERTICAL); r.setPadding(0, dp(8), 0, dp(8));
+        LinearLayout top = new LinearLayout(act);
+        top.setOrientation(LinearLayout.HORIZONTAL);
         TextView l = new TextView(act); l.setText(label); l.setTextColor(Design.dim()); l.setTextSize(13f);
-        TextView v = new TextView(act); v.setText("↗ open"); v.setTextColor(Design.accent()); v.setTextSize(13f); v.setGravity(Gravity.END);
-        r.addView(l, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        r.addView(v, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        r.setOnClickListener(x -> {
-            try { act.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))); }
-            catch (Exception ignore) {}
-        });
+        TextView v = new TextView(act);
+        boolean web = Util.isWebUrl(url);
+        v.setText(web ? "↗ open" : "blocked"); v.setTextColor(web ? Design.accent() : Design.red());
+        v.setTextSize(13f); v.setGravity(Gravity.END);
+        top.addView(l, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        top.addView(v, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        r.addView(top);
+        TextView dest = new TextView(act);
+        dest.setText(url); dest.setTextColor(Design.dim2()); dest.setTextSize(10f);
+        dest.setTypeface(android.graphics.Typeface.MONOSPACE);
+        dest.setMaxLines(2); dest.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+        r.addView(dest);
+        r.setOnClickListener(x -> Util.openWebUrl(act, url));
         return r;
     }
 

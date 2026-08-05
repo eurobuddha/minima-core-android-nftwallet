@@ -15,6 +15,7 @@ public final class SettingsDialog {
     private SettingsDialog() {}
 
     public static void show(final MainActivity act) {
+        final androidx.appcompat.app.AlertDialog[] dlgRef = new androidx.appcompat.app.AlertDialog[1];
         ScrollView sv = new ScrollView(act);
         LinearLayout box = new LinearLayout(act);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -37,7 +38,11 @@ public final class SettingsDialog {
             rb.setTextColor(Design.text());
             rb.setTextSize(13f);
             rb.setChecked(Design.mode() == m);
-            rb.setOnClickListener(v -> { Design.set(act, m); act.recreate(); });
+            rb.setOnClickListener(v -> {
+                if (dlgRef[0] != null) dlgRef[0].dismiss();   // avoid a WindowLeaked on recreate
+                Design.set(act, m);
+                act.recreate();
+            });
             group.addView(rb);
         }
         box.addView(group);
@@ -112,7 +117,7 @@ public final class SettingsDialog {
         a.setTextSize(12f);
         box.addView(a);
 
-        new androidx.appcompat.app.AlertDialog.Builder(act)
+        dlgRef[0] = new androidx.appcompat.app.AlertDialog.Builder(act)
                 .setTitle("Settings")
                 .setView(sv)
                 .setPositiveButton("Close", null)

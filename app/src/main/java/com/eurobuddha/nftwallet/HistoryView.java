@@ -38,6 +38,8 @@ public class HistoryView extends BaseView {
     private boolean fetching = false;
     private int lastFetchBlock = -1;
     private boolean moreAvailable = false;
+    /** Row filter: null = all, else "sent" / "received" / "self". */
+    private String filter = null;
 
     public HistoryView(MainActivity a) {
         super(a, R.layout.view_history);
@@ -95,6 +97,7 @@ public class HistoryView extends BaseView {
         root.setBackgroundColor(Design.bg());          // was showing dark in light mode
         container.setBackgroundColor(Design.bg());
         container.removeAllViews();
+        container.addView(filterBar());
         List<NodeTx> rows = act.history().loadNodeTx(CAP);
         if (rows.isEmpty()) {
             TextView empty = new TextView(act);
@@ -105,7 +108,20 @@ public class HistoryView extends BaseView {
             container.addView(empty);
             return;
         }
-        for (NodeTx n : rows) container.addView(row(n));
+        int shown = 0;
+        for (NodeTx n : rows) {
+            if (filter != null && !filter.equals(n.direction)) continue;
+            container.addView(row(n));
+            shown++;
+        }
+        if (shown == 0) {
+            TextView empty = new TextView(act);
+            empty.setText("No " + filter + " transactions.");
+            empty.setTextColor(Design.dim());
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(0, dp(30), 0, 0);
+            container.addView(empty);
+        }
         if (moreAvailable) {
             TextView more = new TextView(act);
             more.setText("Load older ▾");
@@ -115,6 +131,107 @@ public class HistoryView extends BaseView {
             more.setOnClickListener(v -> loadOlder());
             container.addView(more);
         }
+    }
+
+    /** All / Sent / Received / Self chips + the CSV/JSON export action. */
+    private View filterBar() {
+        LinearLayout bar = new LinearLayout(act);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setPadding(dp(4), dp(2), dp(4), dp(8));
+        String[][] opts = {{"ALL", null}, {"SENT", "sent"}, {"RECEIVED", "received"}, {"SELF", "self"}};
+        for (String[] o : opts) {
+            final String value = o[1];
+            TextView c = new TextView(act);
+            c.setText(o[0]);
+            c.setTextSize(10f);
+            c.setLetterSpacing(0.08f);
+            c.setTypeface(Design.typefaceBold());
+            c.setPadding(dp(10), dp(6), dp(10), dp(6));
+            boolean on = (filter == null && value == null) || (filter != null && filter.equals(value));
+            c.setTextColor(on ? Design.onAccent() : Design.dim());
+            c.setBackgroundColor(on ? Design.accent() : Design.surface2());
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.rightMargin = dp(4);
+            c.setLayoutParams(lp);
+            c.setOnClickListener(v -> { filter = value; render(); });
+            bar.addView(c);
+        }
+        View spacer = new View(act);
+        bar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+        TextView export = new TextView(act);
+        export.setText("⇩ EXPORT");
+        export.setTextSize(10f);
+        export.setLetterSpacing(0.08f);
+        export.setTypeface(Design.typefaceBold());
+        export.setTextColor(Design.accent());
+        export.setPadding(dp(8), dp(6), dp(4), dp(6));
+        export.setOnClickListener(v -> exportDialog());
+        bar.addView(export);
+        return bar;
+    }
+
+    /** Share the (filtered) history as CSV or JSON via the system share sheet. */
+    private void exportDialog() {
+        new AlertDialog.Builder(act)
+                .setTitle("Export history")
+                .setItems(new String[]{"CSV", "JSON"}, (d, which) -> shareExport(which == 0))
+                .show();
+    }
+
+    private void shareExport(boolean csv) {
+        List<NodeTx> rows = act.history().loadNodeTx(CAP);
+        StringBuilder sb = new StringBuilder();
+        SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH);
+        try {
+            if (csv) {
+                sb.append("time,direction,amount,token,counterparty,block,txpowid\n");
+                for (NodeTx n : rows) {
+                    if (filter != null && !filter.equals(n.direction)) continue;
+                    sb.append(fmt.format(new Date(n.timemilli))).append(',')
+                      .append(n.direction).append(',')
+                      .append(Util.tidyAmount(n.amount)).append(',')
+                      .append(csvSafe(n.tokenName)).append(',')
+                      .append(csvSafe(n.counterparty)).append(',')
+                      .append(n.block).append(',')
+                      .append(n.txpowid).append('\n');
+                }
+            } else {
+                JSONArray arr = new JSONArray();
+                for (NodeTx n : rows) {
+                    if (filter != null && !filter.equals(n.direction)) continue;
+                    JSONObject o = new JSONObject();
+                    o.put("time", fmt.format(new Date(n.timemilli)));
+                    o.put("direction", n.direction);
+                    o.put("amount", Util.tidyAmount(n.amount));
+                    o.put("token", n.tokenName);
+                    o.put("counterparty", n.counterparty == null ? "" : n.counterparty);
+                    o.put("block", n.block);
+                    o.put("txpowid", n.txpowid);
+                    arr.put(o);
+                }
+                sb.append(arr.toString());
+            }
+        } catch (Exception e) {
+            Toast.makeText(act, "Export failed.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        android.content.Intent send = new android.content.Intent(android.content.Intent.ACTION_SEND);
+        send.setType("text/plain");
+        send.putExtra(android.content.Intent.EXTRA_SUBJECT,
+                "NFT Wallet history export (" + (csv ? "CSV" : "JSON") + ")");
+        send.putExtra(android.content.Intent.EXTRA_TEXT, sb.toString());
+        try { act.startActivity(android.content.Intent.createChooser(send, "Export history")); }
+        catch (Exception e) { Toast.makeText(act, "No app can receive the export.", Toast.LENGTH_SHORT).show(); }
+    }
+
+    /** Quote a CSV field when it carries a comma/quote; escape embedded quotes. */
+    private static String csvSafe(String s) {
+        if (s == null) return "";
+        if (s.contains(",") || s.contains("\"") || s.contains("\n")) {
+            return "\"" + s.replace("\"", "\"\"") + "\"";
+        }
+        return s;
     }
 
     private View row(final NodeTx n) {

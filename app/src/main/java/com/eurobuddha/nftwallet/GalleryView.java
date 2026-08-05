@@ -139,6 +139,7 @@ public class GalleryView extends BaseView {
 
         for (TokenBalance b : act.balances()) {
             if (!isNftCandidate(b)) continue;
+            if (HiddenTokens.isHidden(act, b.tokenid)) continue;
             JSONObject record = tokenRecords.get(b.tokenid);
             if (record == null) { ensureRecord(b.tokenid); }
             String script = record == null ? "" : record.optString("script", "");

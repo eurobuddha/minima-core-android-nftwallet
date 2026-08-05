@@ -133,9 +133,13 @@ public class MainActivity extends AppCompatActivity {
         blockNo = findViewById(R.id.blockNo);
         ((Button) findViewById(R.id.openNodeBtn)).setOnClickListener(v -> openMinimaCore());
 
-        // Design-language toggle: family Dark ↔ old-wallet Clean Light (Original pair selectable later in Settings).
+        // Design-language toggle: family Dark ↔ old-wallet Clean Light (all four modes in Settings).
         TextView designToggle = findViewById(R.id.designToggle);
         designToggle.setOnClickListener(v -> { Design.set(this, Design.next()); recreate(); });
+
+        TextView settingsBtn = findViewById(R.id.settingsBtn);
+        settingsBtn.setOnClickListener(v -> SettingsDialog.show(this));
+        settingsBtn.setTextColor(Design.accent());
 
         views = new BaseView[]{
                 new BalancesView(this),

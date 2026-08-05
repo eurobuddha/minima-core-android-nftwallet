@@ -55,21 +55,39 @@ public class BalancesView extends BaseView {
         }
 
         String q = search.getText().toString().trim().toLowerCase();
-        int shown = 0;
+        java.util.Set<String> hidden = HiddenTokens.all(act);
+        int shown = 0, hiddenCount = 0;
         for (TokenBalance b : balances) {
             if (!matches(b, q)) continue;
-            container.addView(buildCard(b));
+            if (hidden.contains(b.tokenid) && !showHidden) { hiddenCount++; continue; }
+            View card = buildCard(b);
+            if (hidden.contains(b.tokenid)) card.setAlpha(0.45f);
+            container.addView(card);
             shown++;
         }
         if (shown == 0) {
             TextView tv = new TextView(act);
-            tv.setText("Nothing matches “" + q + "”.");
+            tv.setText(q.isEmpty() ? "Nothing to show." : "Nothing matches “" + q + "”.");
             tv.setTextColor(Design.dim());
             tv.setGravity(Gravity.CENTER);
             tv.setPadding(0, dp(40), 0, 0);
             container.addView(tv);
         }
+        if (hiddenCount > 0 || (showHidden && !hidden.isEmpty())) {
+            TextView t = new TextView(act);
+            t.setText(showHidden ? "hide hidden tokens" :
+                    hiddenCount + (hiddenCount == 1 ? " hidden token · show" : " hidden tokens · show"));
+            t.setTextColor(Design.dim());
+            t.setTextSize(11f);
+            t.setGravity(Gravity.CENTER);
+            t.setPadding(0, dp(10), 0, dp(6));
+            t.setOnClickListener(v -> { showHidden = !showHidden; refresh(); });
+            container.addView(t);
+        }
     }
+
+    /** Session-only toggle for peeking at hidden tokens (dimmed cards). */
+    private boolean showHidden = false;
 
     /** Search filter: name, ticker or tokenid substring (case-insensitive). */
     private boolean matches(TokenBalance b, String q) {
@@ -329,6 +347,31 @@ public class BalancesView extends BaseView {
 
         if (!b.isMinima()) loadContract(b, contractBox);
         loadCoins(b, coinsBox);
+
+        // Hide / unhide (old-wallet behaviour) — never for the native coin.
+        if (!b.isMinima()) {
+            final boolean hidden = HiddenTokens.isHidden(act, b.tokenid);
+            TextView hide = new TextView(act);
+            hide.setText(hidden ? "Unhide this token" : "Hide this token");
+            hide.setTextColor(hidden ? Design.accent() : Design.dim());
+            hide.setTextSize(12f);
+            hide.setPadding(0, dp(12), 0, dp(4));
+            hide.setOnClickListener(v -> {
+                if (hidden) {
+                    HiddenTokens.unhide(act, b.tokenid);
+                    refresh();
+                } else {
+                    new androidx.appcompat.app.AlertDialog.Builder(act)
+                            .setTitle("Hide this token?")
+                            .setMessage("“" + b.name + "” disappears from your balances list. "
+                                    + "You can unhide it from Settings or the hidden-tokens row.")
+                            .setNegativeButton("Cancel", null)
+                            .setPositiveButton("Hide", (d, w) -> { HiddenTokens.hide(act, b.tokenid); refresh(); })
+                            .show();
+                }
+            });
+            box.addView(hide);
+        }
 
         androidx.appcompat.app.AlertDialog.Builder dlg = new androidx.appcompat.app.AlertDialog.Builder(act)
                 .setView(sv)

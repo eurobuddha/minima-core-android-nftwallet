@@ -1,31 +1,48 @@
-# Minima UTXO Wallet (native Android)
+# NFT Wallet (native Android)
 
-A native Android port of the **utxoWallet** MiniDapp — a [Minima](https://minima.global) wallet with
-**explicit UTXO (coin) selection**: pick exactly which coins you spend, construct the whole transaction,
-and review before signing.
+The full-suite [Minima](https://minima.global) companion wallet — the old official Wallet's
+2.47.2-era feature set in a native Java body, plus regular NFT minting and **State NFT
+locked-edition collections**.
 
-Native Java, talking to a local **Minima Core** node over the node's **broadcast‑Intent IPC**
-(`minimaapi`) — no MDS, no RPC, no browser.
+Talks to the Minima Core node APK (`org.minimarex.minimacore`) exclusively over the
+`minimaapi.aar` broadcast-Intent IPC. No embedded node, no local keys — the node signs
+(`txnsign publickey:auto`).
 
-## Features
-- **Wallet** — every address (coins‑first), single‑tokenid multi‑select, tap‑to‑copy.
-- **Send** — full UTXO construction: pick inputs, recipient, **editable change address**, burn, confirm.
-- **Tools** — Split / Consolidate / Distribute (multi‑batch) / Untrack, from the selection bar.
-- **Balances** — rich token cards (icon, sendable/locked, decimals, description).
-- **Receive** — address + QR.
-- **History** — sent + received, classified client‑side from the node's `history` (bounded + lazy so it
-  never overloads the node), with explorer links on confirmed txpowids.
-- Dark + orange theme.
+## Tabs
+
+| Tab | What it does |
+|---|---|
+| **Balances** | Search, sendable/confirmed/unconfirmed on every card, verified + web-validation badges, hidden tokens. Token detail sheet: copy-everywhere, every URL openable, contract viewer with StateNFT detection, per-token **coin explorer** → full coin modal (state ports, embedded-art preview). |
+| **Gallery** | Two-column NFT grid. Regular NFTs one card per token; StateNFT collections one card **per owned item** with its sealed #index. Favourites, search, deep detail, Send / Transfer / Bury. |
+| **Mint** | Token (JSON metadata, ticker, icon URL, webvalidate, custom key/values) · NFT (image → on-chain `<artimage>` embed, or URL/IPFS; editions; signtoken) · **State NFT collection** (2–20 items, embed ≤8000-b64 per item or URL base+index; resumable CREATE→MOVE→SPLIT→STAMP engine with live progress). |
+| **Send** | QUICK SEND (token picker, burn, split 1–20, QR scan) and COIN CONTROL (manual UTXO construction from the Coins tab, editable change, confirm breakdown). |
+| **Receive** | QR (tap to copy), Mx + 0x, `checkaddress` safety report, full address pool. |
+| **Coins** | The utxo coin picker: every UTXO, select inputs for expert sends, long-press → coin modal. Consolidate/distribute tools. |
+| **History** | Adaptive `history max:8` paging (never overloads the node), persisted rows, filters, tap detail with input/output breakdown, CSV/JSON export. |
+
+Dual theme from day one: family dark ↔ old-wallet clean light (all four Design modes in ⚙ Settings).
+
+## StateNFT protocol (from mds/statenft-suite — proven on-chain)
+
+- Locked-edition contract, byte-exact: sentinel state 0, creator bypass only while unstamped,
+  `SAMESTATE(0 0|0 1)` + `VERIFYOUT(@INPUT GETOUTADDR(@INPUT) @AMOUNT @TOKENID TRUE)`.
+- Coins are `sendable:0` — every move is a manual txn replaying **every** state port verbatim
+  with `storestate:true`; state values are sanitized (`^[0-9]+$` / `^\[b64\]$`) before replay.
+- `txnpost status:true` is never trusted — success = the input coin leaving the UTXO set.
+- `txndelete` on every path; ≤3 token outputs per txn, halving on "size too large".
+- Unstamped units refuse transfer (the creator bypass is still live on them).
 
 ## Build
-Requires a **JDK 17/21** (the Android Studio JBR works):
 
-```sh
+```bash
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew assembleDebug
+./gradlew test        # StateNft engine + metadata unit tests
 ```
 
-Install, then enable **Minima UTXO** in Minima Core → Apps to authorize the IPC.
+Release via the family script: `support/release.sh NFTwallet minima-nft-wallet <X.Y.Z> "notes"`.
 
-## Releases
-Versioned APKs + changelog: **[eurobuddha/minima-core-apks](https://github.com/eurobuddha/minima-core-apks)**
-(tags `minima-utxo-wallet-v<version>`).
+## Lineage
+
+Scaffolded from `apks/utxo` (shell, rendering stack, txn builder, history), hardened `NodeApi`
+from `apks/pandadex`, newest `minimaapi.aar` from `apks/base/dist` (content:// large-response
+hand-off), StateNFT engine from `mds/statenft-suite/android`, QR writer from `apks/nftstudio`.

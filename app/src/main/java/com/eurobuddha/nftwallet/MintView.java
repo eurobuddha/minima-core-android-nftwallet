@@ -1195,6 +1195,34 @@ public class MintView extends BaseView {
             container.addView(r);
         }
 
+        // Parked create: the engine refuses to re-post on its own because a duplicate tokencreate
+        // means a second identical collection that can never be merged away.
+        if (row.optInt("createstuck", 0) == 1) {
+            TextView repost = new TextView(act);
+            repost.setText("↻  Re-post the create transaction");
+            repost.setTextColor(Design.amber());
+            repost.setTextSize(13f);
+            repost.setTypeface(Design.typefaceBold());
+            repost.setPadding(0, dp(14), 0, dp(4));
+            repost.setOnClickListener(v -> new androidx.appcompat.app.AlertDialog.Builder(act)
+                    .setTitle("Re-post the create?")
+                    .setMessage("Only do this if the first create was definitely lost. If it later "
+                            + "confirms too, you end up with TWO identical collections and no way to "
+                            + "merge them — you would have to bury one.")
+                    .setNegativeButton("Wait longer", null)
+                    .setPositiveButton("Re-post", (d, w) -> {
+                        JSONObject fresh = LocalStore.findById(act, progressRowId);
+                        if (fresh != null) {
+                            try { fresh.put("posted", 0); fresh.put("createstuck", 0); fresh.put("error", ""); }
+                            catch (Exception ignored) {}
+                            LocalStore.upsert(act, fresh);
+                        }
+                        refresh();
+                        act.mintEngineTick();
+                    }).show());
+            container.addView(repost);
+        }
+
         // Escape hatch: a locked edition can never be edited, only destroyed. Available in every
         // phase — a mint that went wrong (bad image, wrong index) is exactly when it's needed.
         if (!tokenid.isEmpty()) {

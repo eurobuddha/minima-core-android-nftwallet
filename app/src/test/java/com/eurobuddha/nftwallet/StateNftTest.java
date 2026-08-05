@@ -132,6 +132,27 @@ public class StateNftTest {
         assertFalse(items.get(2).owned);
     }
 
+    /** The duplicate-collection bug: the adopt check read name/size/mode off the wrong level. */
+    @Test public void balanceRowMetadataIsReadFromTheNestedNameObject() throws Exception {
+        // Exactly what `balance` returns for a collection this wallet minted.
+        JSONObject tokenRecord = new JSONObject()
+                .put("name", new JSONObject()
+                        .put("name", "SolarPunks")
+                        .put("mode", "embed")
+                        .put("size", 5))
+                .put("total", "5");
+
+        // Reading the keys off the record directly — the old check — finds nothing.
+        assertEquals("", tokenRecord.optString("mode"));
+        assertEquals(0, tokenRecord.optInt("size"));
+
+        // Parsing it properly recovers the identity the engine matches on.
+        StateNft.Meta m = StateNft.parseMeta("0xAABB", tokenRecord);
+        assertEquals("SolarPunks", m.name);
+        assertEquals("embed", m.mode);
+        assertEquals(5, m.size);
+    }
+
     @Test public void localMintRowRoundTripsMetadata() throws Exception {
         StateNft.Meta m = new StateNft.Meta();
         m.localId = 7;

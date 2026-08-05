@@ -62,9 +62,14 @@ public final class MintEngine {
                         if (b == null) continue;
                         JSONObject t = b.optJSONObject("token");
                         if (t == null) continue;
-                        if (row.optString("name").equals(t.optString("name"))
-                                && row.optInt("size") == t.optInt("size")
-                                && row.optString("mode").equals(t.optString("mode"))) {
+                        // The collection's name/size/mode live INSIDE token.name (the metadata
+                        // JSON we minted), never at the top level. Reading them off `t` directly
+                        // always missed, so an already-created token could never be adopted and
+                        // the engine posted tokencreate a SECOND time — two identical collections.
+                        StateNft.Meta tm = StateNft.parseMeta(b.optString("tokenid"), t);
+                        if (row.optString("name").equals(tm.name)
+                                && row.optInt("size") == tm.size
+                                && row.optString("mode").equals(tm.mode)) {
                             candidates.add(b.optString("tokenid"));
                         }
                     }
@@ -109,11 +114,17 @@ public final class MintEngine {
         if (row.optInt("posted", 0) == 1) {
             int waited = tip - row.optInt("postedat", 0);
             if (row.optInt("postedat", 0) == 0 || waited < CREATE_TIMEOUT) {
-                done.done("Waiting for tokencreate confirmation");
+                done.done("Waiting for tokencreate confirmation (" + Math.max(0, waited)
+                        + "/" + CREATE_TIMEOUT + " blocks)");
                 return;
             }
-            put(row, "posted", 0);
-            setError(ctx, row, "tokencreate did not confirm within " + CREATE_TIMEOUT + " blocks - retrying", done);
+            // NEVER auto-repost: a second tokencreate mints a second identical collection and
+            // spends more coin, and nothing can merge them afterwards. The block count also runs
+            // on while the app is closed, so "timed out" often just means "you weren't watching".
+            // Park it and let the user decide.
+            put(row, "createstuck", 1);
+            setError(ctx, row, "The create transaction hasn't confirmed after " + CREATE_TIMEOUT
+                    + " blocks. It may still land — re-post only if you're sure it was lost.", done);
             return;
         }
         StateNft.Meta m = metaFromRow(row);
@@ -128,6 +139,7 @@ public final class MintEngine {
             @Override public void ok(JSONObject res) {
                 put(row, "posted", 1);
                 put(row, "postedat", tip);
+                put(row, "createstuck", 0);
                 put(row, "error", "");
                 LocalStore.upsert(ctx, row);
                 done.done("Tokencreate posted");

@@ -381,12 +381,20 @@ public final class MintEngine {
     private static void setPhase(Context ctx, JSONObject row, String phase, Done done) {
         put(row, "phase", phase);
         put(row, "error", "");
+        put(row, "stuck", 0);
         LocalStore.upsert(ctx, row);
         done.done("Collection " + row.optString("name") + " -> " + phase);
     }
 
     private static void setError(Context ctx, JSONObject row, String error, Done done) {
         put(row, "error", error);
+        // "TxPoW size too large" that reaches here is TERMINAL, not transient: the split phase
+        // already halves and retries, and everything else is a fixed-size transaction. The usual
+        // cause is an oversized token record — which is immutable — so retrying every block would
+        // spin forever and keep the background service alive for nothing. Park it.
+        if (error != null && error.toLowerCase().contains("size too large")) {
+            put(row, "stuck", 1);
+        }
         LocalStore.upsert(ctx, row);
         done.done(error);
     }

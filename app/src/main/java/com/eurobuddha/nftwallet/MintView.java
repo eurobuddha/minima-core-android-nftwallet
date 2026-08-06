@@ -973,8 +973,16 @@ public class MintView extends BaseView {
                 icon = colIconB64;
                 iconDesc = "embedded on-chain (" + colIconB64.length() + " b64)";
             } else if (colImages.containsKey(1)) {
-                icon = colImages.get(1);                       // mirror the first item
-                iconDesc = "item #1's image, embedded";
+                // Mirror item #1 — but SHRUNK to the icon budget first.
+                //
+                // The token's metadata is carried in every transaction that touches the token, not
+                // once on the chain. Sealing a full-size state plate (up to STATE_IMG_BUDGET) as
+                // the icon made the very first MOVE 80KB against the 64KB TxPoW cap, and since
+                // metadata is immutable the whole collection was bricked on creation.
+                icon = ImageTools.recompressBase64(colImages.get(1), ICON_BUDGET);
+                iconDesc = icon.isEmpty()
+                        ? "None — item #1 could not be shrunk to fit the icon budget"
+                        : "item #1's image, shrunk to " + icon.length() + " b64 for the token record";
             } else if (!colEmbedMode && !base.isEmpty()) {
                 icon = base + 1 + ext;                          // url-mode collections: item #1's URL
                 iconDesc = icon;
@@ -986,6 +994,14 @@ public class MintView extends BaseView {
             if (!iconUrl.isEmpty() && badUrl(iconUrl)) { status(cStatus, "Icon URL must be a plain http(s) link.", false); return; }
             icon = iconUrl;
             iconDesc = iconUrl.isEmpty() ? "None — the wallet will show a generated identicon" : iconUrl;
+        }
+        // Last line of defence: an oversized icon bricks the collection permanently, so refuse to
+        // start rather than seal one. Only embedded icons can be oversized; URLs are tiny.
+        if (colIconEmbed && !icon.isEmpty() && icon.length() > ICON_BUDGET) {
+            status(cStatus, "That icon is too large (" + icon.length() + " of " + ICON_BUDGET
+                    + " chars). The token record travels with every transaction, so a big icon "
+                    + "would make the collection unusable. Pick a simpler icon.", false);
+            return;
         }
         final String extUrl = cExtUrl.getText().toString().trim();
         if (!extUrl.isEmpty() && badUrl(extUrl)) { status(cStatus, "External URL must be a plain http(s) link.", false); return; }
@@ -1120,6 +1136,17 @@ public class MintView extends BaseView {
             warn.setPadding(0, dp(8), 0, 0);
             container.addView(warn);
         }
+        if (MintDriver.isStuck(row)) {
+            TextView stuck = new TextView(act);
+            stuck.setText("This collection cannot be completed.\n\nIts transactions exceed the "
+                    + "64KB chain limit, and the token record that causes it was fixed when the "
+                    + "token was created — it cannot be edited or shrunk. Nothing further will be "
+                    + "attempted.\n\nBury it below to clear it, or leave it: the coins are inert.");
+            stuck.setTextColor(Design.red());
+            stuck.setTextSize(12f);
+            stuck.setPadding(0, dp(10), 0, dp(4));
+            container.addView(stuck);
+        }
         String err = row.optString("error", "");
         if (!err.isEmpty() && !"NEEDIMAGES".equals(phase)) {
             TextView e = new TextView(act);
@@ -1244,10 +1271,20 @@ public class MintView extends BaseView {
             container.addView(buryAll);
         }
 
-        if (!"DONE".equals(phase)) {
+        if (!"DONE".equals(phase) && !MintDriver.isStuck(row)) {
             container.addView(primaryButton("Resume now", v -> {
-                Toast.makeText(act, "Nudging the mint engine…", Toast.LENGTH_SHORT).show();
-                act.mintEngineTick();
+                MintDriver.Result r = act.mintEngineTick();
+                Toast.makeText(act, MintDriver.explain(r), Toast.LENGTH_SHORT).show();
+                if (r == MintDriver.Result.NEEDS_IMAGES) {
+                    // Don't pretend to nudge: it's waiting on the user, so take them to the picker.
+                    int first = 1;
+                    org.json.JSONArray its = MintEngine.localItems(row);
+                    for (int i = 0; i < its.length(); i++) {
+                        JSONObject it2 = its.optJSONObject(i);
+                        if (it2 != null && it2.optString("image", "").isEmpty()) { first = it2.optInt("idx", 1); break; }
+                    }
+                    pickProgressImages(row, first);
+                }
             }));
         } else {
             TextView doneNote = new TextView(act);

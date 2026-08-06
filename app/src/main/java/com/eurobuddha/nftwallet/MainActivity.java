@@ -259,6 +259,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        FOREGROUND = true;
         // Refresh from the node (also re-checks enablement after returning from Minima Core).
         requestReload();
         // If the user returns while parked on History, refetch it (otherwise it waits for the next block).
@@ -278,6 +279,14 @@ public class MainActivity extends AppCompatActivity {
     private void schedulePairingRetry() {
         ui.removeCallbacks(pairingRetry);
         ui.postDelayed(pairingRetry, PAIRING_RETRY_MS);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        FOREGROUND = false;
+        // Leaving the app mid-mint is exactly when the service earns its keep.
+        MintService.startIfWork(this);
     }
 
     @Override
@@ -750,7 +759,6 @@ public class MainActivity extends AppCompatActivity {
 
     // ===== StateNFT mint engine driver =====
 
-    private boolean mintTickRunning = false;
     private String mintStatus = "";
 
     /** Last engine progress message (shown on the Mint progress screen). */
@@ -761,27 +769,21 @@ public class MainActivity extends AppCompatActivity {
      * i.e. per new block, which is exactly the cadence the phase machine wants. Re-entrancy
      * guarded: a tick chains many node commands and must not overlap itself.
      */
-    public void mintEngineTick() {
-        if (mintTickRunning || node == null) return;
-        if (!hasActiveMint()) return;
-        mintTickRunning = true;
-        MintEngine.tick(this, node, message -> {
-            mintTickRunning = false;
-            mintStatus = message == null ? "" : message;
+    public MintDriver.Result mintEngineTick() {
+        MintDriver.Result r = MintDriver.tick(this, node, message -> {
+            mintStatus = message;
             ((MintView) views[TAB_MINT]).onEngineTick();
         });
+        // Hand off to the background service when there is still work and we're not in front.
+        if (!FOREGROUND) MintService.startIfWork(this);
+        return r;
     }
 
-    private boolean hasActiveMint() {
-        org.json.JSONArray rows = LocalStore.load(this);
-        for (int i = 0; i < rows.length(); i++) {
-            JSONObject r = rows.optJSONObject(i);
-            if (r == null) continue;
-            String p = r.optString("phase", "DONE");
-            if ("CREATE".equals(p) || "MOVE".equals(p) || "SPLIT".equals(p) || "STAMP".equals(p)) return true;
-        }
-        return false;
-    }
+    /**
+     * True while this Activity is visible. The service stands down when it is, because both hosts
+     * share the same LocalStore and two ticks racing would spend the same coin twice.
+     */
+    public static volatile boolean FOREGROUND = false;
 
     /** Max decimal places a token allows: -1 for Minima or an unknown token (no clamp). */
     public int tokenDecimals(String tokenid) {

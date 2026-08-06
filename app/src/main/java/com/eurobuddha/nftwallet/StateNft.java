@@ -122,9 +122,15 @@ public final class StateNft {
             put(meta, "ext", m.ext == null || m.ext.isEmpty() ? ".png" : m.ext);
         }
         if (m.icon != null && !m.icon.isEmpty()) {
-            // The closing tag matters: IconResolver's regex requires it, and without it every
-            // embedded icon we minted fell through to an identicon.
-            put(meta, "url", m.icon.startsWith("http") ? m.icon : "<artimage>" + m.icon + "</artimage>");
+            boolean http = m.icon.startsWith("http");
+            // Token metadata rides in EVERY transaction touching the token. An oversized embedded
+            // icon pushes those transactions past the 64KB TxPoW cap — and metadata is immutable,
+            // so the collection is bricked at creation. Drop the icon rather than seal that.
+            if (http || m.icon.length() <= ImageTools.ICON_BUDGET) {
+                // The closing tag matters: IconResolver's regex requires it, and without it every
+                // embedded icon we minted fell through to an identicon.
+                put(meta, "url", http ? m.icon : "<artimage>" + m.icon + "</artimage>");
+            }
         }
         if (m.externalUrl != null && !m.externalUrl.isEmpty()) put(meta, "external_url", m.externalUrl);
         return meta;

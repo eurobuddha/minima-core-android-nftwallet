@@ -33,18 +33,10 @@ import java.util.List;
  */
 public class MintView extends BaseView {
 
-    /** Base64 budget for embedded NFT art in token metadata. */
-    private static final int ARTIMAGE_BUDGET = 9000;
-
-    /**
-     * Per-item embedded image budget for State NFT coins.
-     *
-     * A transfer carries the image TWICE (input-coin proof + recreated output state) against a
-     * 64 KB TxPoW cap, which is what bounds this. 12000 base64 chars = 24 KB on the wire for a
-     * transfer, leaving ~40 KB for signatures and proofs — comfortable, and a 50% quality gain
-     * over the original 8000. Raise further only with a real transfer tested on-chain.
-     */
-    private static final int STATE_IMG_BUDGET = 12000;
+    // Budgets live in ImageTools so this app and Atelier cannot drift apart.
+    private static final int ARTIMAGE_BUDGET = ImageTools.ARTIMAGE_BUDGET;
+    private static final int STATE_IMG_BUDGET = ImageTools.STATE_IMG_BUDGET;
+    private static final int ICON_BUDGET = ImageTools.ICON_BUDGET;
 
     /** Keys the wallet writes itself — a custom metadata pair may not overwrite them. */
     private static final java.util.Set<String> RESERVED_META = new java.util.HashSet<>(java.util.Arrays.asList(
@@ -475,14 +467,11 @@ public class MintView extends BaseView {
             nPreview.setImageURI(uri);
             nImageNote.setText("Compressing…");
             new Thread(() -> {
-                String b64;
-                try { b64 = ImageTools.compressUri(act, uri, ARTIMAGE_BUDGET); }
-                catch (Exception e) { b64 = ""; }
-                final String result = b64;
+                final String result = sealFrom(uri, ARTIMAGE_BUDGET);
                 act.runOnUiThread(() -> {
                     if (result.isEmpty()) {
                         nftImageB64 = "";
-                        nImageNote.setText("Could not read that image — try another.");
+                        nImageNote.setText("Could not read that image — try another, or a smaller one.");
                     } else {
                         nftImageB64 = result;
                         setNftMode(true);   // picking an image implies embed mode
@@ -569,7 +558,7 @@ public class MintView extends BaseView {
             ivlp.gravity = Gravity.CENTER_HORIZONTAL; ivlp.bottomMargin = dp(8);
             iv.setLayoutParams(ivlp);
             iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            ImageLoader.loadOver(act, "data:image/jpeg;base64," + nftImageB64, iv, null);
+            ImageLoader.loadOver(act, ImageTools.dataUri(nftImageB64), iv, null);
             body.addView(iv, 0);
         }
         addConfirmRow(body, "Name", name);
@@ -755,12 +744,9 @@ public class MintView extends BaseView {
         act.pickImage(uri -> {
             cIconNote.setText("Compressing…");
             new Thread(() -> {
-                String b64;
-                try { b64 = ImageTools.compressUri(act, uri, ARTIMAGE_BUDGET); }
-                catch (Exception e) { b64 = ""; }
-                final String result = b64;
+                final String result = sealFrom(uri, ICON_BUDGET);
                 act.runOnUiThread(() -> {
-                    if (result.isEmpty()) { cIconNote.setText("Could not read that image — try another."); return; }
+                    if (result.isEmpty()) { cIconNote.setText("Could not read that image — try another, or a smaller one."); return; }
                     colIconB64 = result;
                     refreshIconPreview();
                 });
@@ -776,13 +762,13 @@ public class MintView extends BaseView {
             return;
         }
         if (!colIconB64.isEmpty()) {
-            ImageLoader.loadOver(act, "data:image/jpeg;base64," + colIconB64, cIconPreview, null);
+            ImageLoader.loadOver(act, ImageTools.dataUri(colIconB64), cIconPreview, null);
             cIconNote.setText("Embedded on-chain · " + colIconB64.length() + " b64 · tap to change");
             return;
         }
         String first = colImages.get(1);
         if (first != null) {
-            ImageLoader.loadOver(act, "data:image/jpeg;base64," + first, cIconPreview, null);
+            ImageLoader.loadOver(act, ImageTools.dataUri(first), cIconPreview, null);
             cIconNote.setText("Using item #1 by default · tap to choose a different icon");
         } else {
             cIconPreview.setImageBitmap(null);
@@ -833,7 +819,7 @@ public class MintView extends BaseView {
             thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
             thumb.setBackgroundColor(Design.surface2());
             boolean have = colImages.containsKey(idx);
-            if (have) ImageLoader.loadOver(act, "data:image/jpeg;base64," + colImages.get(idx), thumb, null);
+            if (have) ImageLoader.loadOver(act, ImageTools.dataUri(colImages.get(idx)), thumb, null);
             else thumb.setImageBitmap(null);
             r.addView(thumb);
 
@@ -909,10 +895,7 @@ public class MintView extends BaseView {
         progress.accept("Compressing 1 / " + n + "…");
         new Thread(() -> {
             for (int i = 0; i < n; i++) {
-                String b64;
-                try { b64 = ImageTools.compressUri(act, uris.get(i), STATE_IMG_BUDGET); }
-                catch (Exception e) { b64 = ""; }
-                final String result = b64;
+                final String result = sealFrom(uris.get(i), STATE_IMG_BUDGET);
                 final int slot = targets.get(i);
                 final int shown = i + 1;
                 // Assign on the UI thread so the image map stays single-threaded.
@@ -923,6 +906,22 @@ public class MintView extends BaseView {
             }
             act.runOnUiThread(onDone);
         }).start();
+    }
+
+    /**
+     * Turn a picked file into the base64 that will be sealed on-chain.
+     *
+     * Vector art takes its own lane: an SVG is sanitized and stored as text, keeping it sharp at
+     * any size, where pushing it through the raster ladder would flatten it to pixels. Everything
+     * else goes through the WebP search. Returns "" when it cannot be read or will not fit.
+     */
+    private String sealFrom(android.net.Uri uri, int budget) {
+        try {
+            if (ImageTools.isSvgUri(act, uri)) return ImageTools.svgBase64FromUri(act, uri, budget);
+            return ImageTools.compressUri(act, uri, budget);
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     /** Tell the user what the batch actually did — including leftovers or shortfall. */

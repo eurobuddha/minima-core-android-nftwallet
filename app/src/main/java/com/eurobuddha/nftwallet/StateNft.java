@@ -122,7 +122,9 @@ public final class StateNft {
             put(meta, "ext", m.ext == null || m.ext.isEmpty() ? ".png" : m.ext);
         }
         if (m.icon != null && !m.icon.isEmpty()) {
-            put(meta, "url", m.icon.startsWith("http") ? m.icon : "<artimage>" + m.icon);
+            // The closing tag matters: IconResolver's regex requires it, and without it every
+            // embedded icon we minted fell through to an identicon.
+            put(meta, "url", m.icon.startsWith("http") ? m.icon : "<artimage>" + m.icon + "</artimage>");
         }
         if (m.externalUrl != null && !m.externalUrl.isEmpty()) put(meta, "external_url", m.externalUrl);
         return meta;
@@ -212,8 +214,9 @@ public final class StateNft {
     public static String imageUrl(Meta meta, int idx, JSONObject coin) {
         String embedded = state(coin, 1);
         if (embedded != null && embedded.startsWith("[") && embedded.endsWith("]")) {
-            // ImageTools writes JPEG; labelling it PNG only worked because decoders sniff.
-            return "data:image/jpeg;base64," + embedded.substring(1, embedded.length() - 1);
+            // Sniff the payload rather than assuming: plates are WebP now, were JPEG before, and
+            // may be SVG. A hardcoded label is wrong for two of those three.
+            return ImageTools.dataUri(embedded.substring(1, embedded.length() - 1));
         }
         if (meta != null && !meta.base.isEmpty()) return meta.base + idx + (meta.ext == null ? "" : meta.ext);
         return IconResolver.resolve(meta == null ? "" : meta.icon);

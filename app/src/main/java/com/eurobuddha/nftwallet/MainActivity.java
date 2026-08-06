@@ -349,7 +349,8 @@ public class MainActivity extends AppCompatActivity {
     /**
      * The coin list, fetched in a way that survives the 256 KB IPC cap.
      *
-     * This wallet's own State NFT collections embed up to 8000 base64 chars of art PER COIN, so a
+     * This wallet's own State NFT collections embed up to ImageTools.STATE_IMG_BUDGET base64 chars
+     * of art PER COIN, so a
      * couple of collections can push an unbounded {@code coins relevant:true} over the cap — and an
      * over-cap reply comes back as the node's stub (ERR_TOO_LONG), leaving the wallet with NO coins
      * at all: empty Gallery, empty coin control, no explanation. So: try the whole list once, and on

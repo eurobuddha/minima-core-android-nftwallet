@@ -431,12 +431,25 @@ public class BalancesView extends BaseView {
                     final String collection = cm != null && cm.name != null && !cm.name.isEmpty()
                             ? cm.name : b.name;
                     final String creatorPk = StateNft.creatorPk(script);
+                    TextView sendAll = new TextView(act);
+                    sendAll.setText("→  Send this entire collection");
+                    sendAll.setTextColor(Design.accent());
+                    sendAll.setTextSize(13f);
+                    sendAll.setTypeface(Design.typefaceBold());
+                    sendAll.setPadding(0, dp(14), 0, dp(4));
+                    sendAll.setOnClickListener(v -> {
+                        if (sheet != null && sheet[0] != null) sheet[0].dismiss();
+                        StateNftActions.transferCollectionDialog(act, b.tokenid, collection,
+                                () -> act.reload());
+                    });
+                    into.addView(sendAll);
+
                     TextView buryAll = new TextView(act);
                     buryAll.setText("✝  Bury this entire collection");
                     buryAll.setTextColor(Design.red());
                     buryAll.setTextSize(13f);
                     buryAll.setTypeface(Design.typefaceBold());
-                    buryAll.setPadding(0, dp(16), 0, dp(6));
+                    buryAll.setPadding(0, dp(6), 0, dp(6));
                     buryAll.setOnClickListener(v -> {
                         if (sheet != null && sheet[0] != null) sheet[0].dismiss();
                         StateNftActions.buryCollectionDialog(act, b.tokenid, collection, creatorPk,

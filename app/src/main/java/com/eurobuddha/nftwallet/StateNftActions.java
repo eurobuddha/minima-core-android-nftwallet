@@ -218,6 +218,161 @@ public final class StateNftActions {
         });
     }
 
+    // ===================== transfer a whole collection =====================
+
+    /**
+     * Send every item of a collection you hold to one address.
+     *
+     * This is ONE action but it is NOT one transaction, and it cannot be. Minima state is
+     * per-TRANSACTION — a transaction carries a single state map — while every stamped item holds a
+     * different index at port 0. The locked-edition script asserts SAMESTATE over that index, so
+     * two items with different identities can never satisfy it in the same transaction. One txn per
+     * item is the protocol, not an inefficiency in this wallet.
+     *
+     * So we do what the bury flow does: enumerate, then post in sequence with honest progress.
+     */
+    public static void transferCollectionDialog(final MainActivity act, final String tokenid,
+                                                final String collectionName, final Runnable onDone) {
+        if (!Util.isValidHexId(tokenid)) {
+            Sheet.create(act, "Refusing this collection")
+                    .subtitle("Its token id is not plain hex, so this wallet will not build "
+                            + "transactions from it.")
+                    .action("Close", Sheet.Style.SECONDARY, null)
+                    .show();
+            return;
+        }
+
+        LinearLayout box = new LinearLayout(act);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setBackgroundColor(Design.bg());
+        int pad = dp(act, 18);
+        box.setPadding(pad, dp(act, 8), pad, dp(act, 8));
+
+        TextView t = new TextView(act);
+        t.setText("Sends every stamped item of “" + collectionName + "” that you still hold to one "
+                + "address.\n\nEach item is its own transaction — the chain requires that, because "
+                + "every item carries a different sealed identity — so this takes a few minutes and "
+                + "the items arrive one by one.\n\nUnstamped items and items you have already sent "
+                + "are skipped.");
+        t.setTextColor(Design.dim());
+        t.setTextSize(12f);
+        box.addView(t);
+
+        LinearLayout addrRow = new LinearLayout(act);
+        addrRow.setOrientation(LinearLayout.HORIZONTAL);
+        addrRow.setGravity(Gravity.CENTER_VERTICAL);
+        final EditText addr = new EditText(act);
+        addr.setHint("Recipient  Mx…  or  0x…");
+        addr.setHintTextColor(Design.dim2());
+        addr.setTextColor(Design.text());
+        addr.setTextSize(13f);
+        addr.setTypeface(android.graphics.Typeface.MONOSPACE);
+        addr.setBackgroundColor(Design.surface2());
+        addr.setPadding(dp(act, 10), dp(act, 10), dp(act, 10), dp(act, 10));
+        addr.setInputType(InputType.TYPE_CLASS_TEXT);
+        addrRow.addView(addr, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        TextView scan = new TextView(act);
+        scan.setText(" ⌗ ");
+        scan.setTextColor(Design.accent());
+        scan.setTextSize(16f);
+        scan.setOnClickListener(v -> act.scanQr(text -> { if (text != null) addr.setText(text.trim()); }));
+        addrRow.addView(scan);
+        LinearLayout.LayoutParams arlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        arlp.topMargin = dp(act, 10);
+        addrRow.setLayoutParams(arlp);
+        box.addView(addrRow);
+
+        Sheet.create(act, "Send the whole collection")
+                .body(box)
+                .action("Back", Sheet.Style.SECONDARY, null)
+                .action("Send all →", Sheet.Style.PRIMARY, () -> {
+                    String to = addr.getText().toString().trim();
+                    if (!Util.isValidAddress(to)) {
+                        android.widget.Toast.makeText(act, "That isn't a valid Minima address.",
+                                android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    gatherAndTransfer(act, tokenid, collectionName, to, onDone);
+                })
+                .show();
+    }
+
+    private static void gatherAndTransfer(final MainActivity act, final String tokenid,
+                                          final String collectionName, final String to,
+                                          final Runnable onDone) {
+        final Sheet.Progress progress = progressDialog(act,
+                "Sending " + collectionName, "Finding the items you still hold…");
+        act.node().cmd("coins relevant:true tokenid:" + tokenid, new NodeApi.Cb() {
+            @Override public void onResult(JSONObject json) {
+                org.json.JSONArray arr = json.optJSONArray("response");
+                final java.util.List<JSONObject> coins = new java.util.ArrayList<>();
+                int skipped = 0;
+                if (arr != null) {
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject c = arr.optJSONObject(i);
+                        if (c == null) continue;
+                        // Same refusals as a single transfer: a malformed id or state this wallet
+                        // will not replay, and unstamped units whose creator bypass is still live.
+                        if (!Util.isValidHexId(c.optString("coinid", ""))
+                                || !StateNft.replayableState(c)
+                                || StateNft.stamped(c) == null) { skipped++; continue; }
+                        coins.add(c);
+                    }
+                }
+                if (coins.isEmpty()) {
+                    setMessage(progress, skipped > 0
+                            ? "Nothing sendable here — " + skipped + " item(s) were skipped as "
+                              + "unstamped or unsafe to replay."
+                            : "You hold no items of this collection.");
+                    makeDismissable(progress);
+                    return;
+                }
+                transferNext(act, tokenid, to, coins, 0, new int[]{0}, skipped, progress, onDone);
+            }
+            @Override public void onError(String message) {
+                setMessage(progress, NodeApi.ERR_TOO_LONG.equals(message)
+                        ? "The node's coin list for this collection is too large to fetch here — "
+                          + "send the items individually from the Gallery."
+                        : "Could not list the items: " + message);
+                makeDismissable(progress);
+            }
+        });
+    }
+
+    private static void transferNext(final MainActivity act, final String tokenid, final String to,
+                                     final java.util.List<JSONObject> coins, final int i,
+                                     final int[] done, final int skipped,
+                                     final Sheet.Progress progress, final Runnable onDone) {
+        if (i >= coins.size()) {
+            setMessage(progress, "Posted " + done[0] + " of " + coins.size() + " transfers"
+                    + (skipped > 0 ? " (" + skipped + " skipped)" : "") + ".\n\n"
+                    + "The chain has the last word — items leave your wallet as each spend "
+                    + "confirms, over the next few blocks.");
+            makeDismissable(progress);
+            act.reload();
+            if (onDone != null) onDone.run();
+            return;
+        }
+        final JSONObject coin = coins.get(i);
+        String idx = StateNft.stamped(coin);
+        setMessage(progress, "Sending " + (i + 1) + " of " + coins.size()
+                + (idx == null ? "" : "  (#" + idx + ")") + "…");
+        final String txn = "tc" + shortId(coin.optString("coinid", ""));
+        java.util.List<String> cmds = StateNft.transferCommands(txn, tokenid, coin, to);
+        CmdChain.run(act.node(), cmds, "txndelete id:" + txn, new CmdChain.Done() {
+            @Override public void ok(JSONObject last) {
+                act.node().cmd("txndelete id:" + txn, NOOP);
+                done[0]++;
+                transferNext(act, tokenid, to, coins, i + 1, done, skipped, progress, onDone);
+            }
+            @Override public void fail(String message) {
+                // One failure must not strand the rest — carry on and report the true tally.
+                transferNext(act, tokenid, to, coins, i + 1, done, skipped, progress, onDone);
+            }
+        });
+    }
+
     // ===================== bury a whole collection =====================
 
     /**

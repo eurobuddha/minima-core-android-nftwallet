@@ -429,6 +429,18 @@ public class GalleryView extends BaseView {
             });
             box.addView(bury);
 
+            TextView sendAll = new TextView(act);
+            sendAll.setText("→  Send the WHOLE collection (every item you hold)");
+            sendAll.setTextColor(Design.accent());
+            sendAll.setTextSize(12f);
+            sendAll.setPadding(0, dp(8), 0, dp(2));
+            sendAll.setOnClickListener(v -> {
+                dlg.dismiss();
+                StateNftActions.transferCollectionDialog(act, it.tokenid, collection,
+                        () -> act.reload());
+            });
+            box.addView(sendAll);
+
             TextView buryAll = new TextView(act);
             buryAll.setText("✝  Bury the WHOLE collection (every item you hold)");
             buryAll.setTextColor(Design.red());

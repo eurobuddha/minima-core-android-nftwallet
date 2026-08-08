@@ -61,6 +61,9 @@ public class MintView extends BaseView {
     private boolean colIconEmbed = true;
     /** Embedded collection icon, base64 (empty = fall back to item #1). */
     private String colIconB64 = "";
+    /** Item #1 pre-shrunk to ICON_BUDGET, prepared in the background when slot 1 is filled, so the
+     *  confirm step never has to decode and re-encode on the UI thread. */
+    private String colIconDefault = "";
     /** Per-item base64 images, key = item index 1..size. */
     private final java.util.HashMap<Integer, String> colImages = new java.util.HashMap<>();
 
@@ -740,6 +743,31 @@ public class MintView extends BaseView {
         refreshIconPreview();
     }
 
+    /**
+     * Shrink item #1 to the icon budget ahead of time, in the background.
+     *
+     * The token record travels with every transaction, so the icon must be small — but doing the
+     * decode-and-re-encode when the user taps "Review & start mint" froze the UI for about a
+     * second. Prepare it the moment slot 1 is filled instead.
+     */
+    private void prepareIconDefault(final String first) {
+        if (first == null || first.isEmpty()) { colIconDefault = ""; return; }
+        if (!colIconB64.isEmpty()) return;                       // a chosen icon wins
+        if (first.equals(colIconDefaultSource)) return;          // already done for this image
+        colIconDefaultSource = first;
+        new Thread(() -> {
+            final String shrunk = ImageTools.recompressBase64(first, ICON_BUDGET);
+            act.runOnUiThread(() -> {
+                if (!first.equals(colIconDefaultSource)) return;  // slot 1 changed meanwhile
+                colIconDefault = shrunk;
+                refreshIconPreview();
+            });
+        }).start();
+    }
+
+    /** Which item-#1 image colIconDefault was derived from, so we only shrink once per image. */
+    private String colIconDefaultSource = "";
+
     private void pickCollectionIcon() {
         act.pickImage(uri -> {
             cIconNote.setText("Compressing…");
@@ -768,8 +796,14 @@ public class MintView extends BaseView {
         }
         String first = colImages.get(1);
         if (first != null) {
-            ImageLoader.loadOver(act, ImageTools.dataUri(first), cIconPreview, null);
-            cIconNote.setText("Using item #1 by default · tap to choose a different icon");
+            prepareIconDefault(first);
+            // Preview the SHRUNK bytes once they exist, so what you see is what gets sealed.
+            String show = colIconDefault.isEmpty() ? first : colIconDefault;
+            ImageLoader.loadOver(act, ImageTools.dataUri(show), cIconPreview, null);
+            cIconNote.setText(colIconDefault.isEmpty()
+                    ? "Using item #1 by default · preparing a small copy for the token record…"
+                    : "Using item #1, shrunk to " + colIconDefault.length()
+                      + " b64 for the token record · tap to choose a different icon");
         } else {
             cIconPreview.setImageBitmap(null);
             cIconNote.setText("Defaults to item #1's image · tap to choose a different one");
@@ -972,6 +1006,9 @@ public class MintView extends BaseView {
             if (!colIconB64.isEmpty()) {
                 icon = colIconB64;
                 iconDesc = "embedded on-chain (" + colIconB64.length() + " b64)";
+            } else if (colIconDefault != null && !colIconDefault.isEmpty()) {
+                icon = colIconDefault;                      // already shrunk, off the UI thread
+                iconDesc = "item #1's image, shrunk to " + icon.length() + " b64 for the token record";
             } else if (colImages.containsKey(1)) {
                 // Mirror item #1 — but SHRUNK to the icon budget first.
                 //
@@ -1074,6 +1111,8 @@ public class MintView extends BaseView {
                 LocalStore.upsert(act, row);
                 colImages.clear();
                 colIconB64 = "";
+                colIconDefault = "";
+                colIconDefaultSource = "";
                 colForm = null;                    // fresh form next time
                 progressRowId = m.localId;
                 screen = Screen.PROGRESS;

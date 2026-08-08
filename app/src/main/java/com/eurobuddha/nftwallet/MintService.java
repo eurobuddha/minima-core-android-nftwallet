@@ -99,7 +99,14 @@ public class MintService extends Service {
 
     /** Everything is minted (or parked for the user): say so once, then get out of the way. */
     private void finishUp() {
-        if (!MintDriver.needsImages(this)) {
+        // A stuck collection makes hasWork() false, exactly like a finished one — so this used to
+        // congratulate the user on a collection that had just died against the 64KB cap. Report
+        // what actually happened; the Mint screen shows the full explanation.
+        if (MintDriver.hasStuck(this)) {
+            Notifier.alert(this, "Minting stopped",
+                    "A collection can't be completed — its transactions exceed the chain's 64KB "
+                            + "limit. Open the wallet for details.");
+        } else if (!MintDriver.needsImages(this)) {
             Notifier.alert(this, "Minting finished", "Your collection is fully stamped.");
         }
         stopGracefully();
@@ -124,7 +131,7 @@ public class MintService extends Service {
         NotificationCompat.Builder b = new NotificationCompat.Builder(this, Notifier.CH_FG)
                 .setContentTitle("Minting your collection")
                 .setContentText(text)
-                .setSmallIcon(android.R.drawable.ic_menu_gallery)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentIntent(Notifier.openApp(this))
                 .setOngoing(true);
         int[] p = MintDriver.activeProgress(this);
@@ -173,6 +180,11 @@ public class MintService extends Service {
     @Override public void onTimeout(int startId, int fgsType) { stopGracefully(); }
 
     private void stopGracefully() {
+        // Tear down the two wake sources with us. Both are self-perpetuating — the heartbeat
+        // re-arms itself and the worker is periodic — so leaving them running meant one finished
+        // mint bought a permanent 15-minute wakeup for the life of the install.
+        HeartbeatReceiver.cancel(this);
+        MintWorker.cancel(this);
         try { stopForeground(STOP_FOREGROUND_REMOVE); } catch (Exception ignored) {}
         stopSelf();
     }

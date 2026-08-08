@@ -19,6 +19,18 @@ public final class StateNft {
 
     private StateNft() {}
 
+    /**
+     * True for a coin that has been buried — it sits at the graveyard address.
+     *
+     * The node keeps returning these from {@code coins relevant:true} after a burial, because it
+     * still tracks the coin. {@code balance} does not count them, so a buried collection vanished
+     * from the Balances tab (token-driven) while the Gallery (coin-driven) went on showing every
+     * buried item as though you still held it. Filtered at ingestion so no screen has to remember.
+     */
+    public static boolean isBuried(Coin c) {
+        return c != null && c.address != null && GRAVEYARD.equalsIgnoreCase(c.address.trim());
+    }
+
     public static class Meta {
         public String tokenid = "";
         public String name = "Collection";

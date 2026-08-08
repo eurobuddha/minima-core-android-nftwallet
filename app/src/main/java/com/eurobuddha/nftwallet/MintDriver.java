@@ -38,10 +38,35 @@ public final class MintDriver {
 
     /** Guards re-entrancy across BOTH hosts — a tick chains many commands and must not overlap. */
     private static volatile boolean running = false;
+    /** When the in-flight tick started, so a lost callback can't latch {@link #running} forever. */
+    private static volatile long startedAt = 0;
+
+    /**
+     * How long a tick may hold the guard before we assume its callback is never coming.
+     *
+     * This is not belt-and-braces. NodeApi drops callbacks once its hosting Activity is finishing
+     * or destroyed (NodeApi.dead()), and a tick chains many commands with a write that can hold the
+     * node for minutes — so rotating the phone or toggling the theme mid-mint destroys the Activity
+     * with a tick in flight and the completion callback never fires. Because this guard is static,
+     * that would wedge minting for the WHOLE process: every later tick, in the Activity and in
+     * MintService alike, would return BUSY until the process died. Generous enough never to cut a
+     * healthy tick short; short enough that a wedge heals on its own.
+     */
+    private static final long MAX_TICK_MS = 5 * 60_000;
 
     private MintDriver() {}
 
-    public static boolean isRunning() { return running; }
+    public static boolean isRunning() { return inFlight(); }
+
+    /** True while a tick is genuinely in flight — a stale guard past MAX_TICK_MS reads as free. */
+    private static boolean inFlight() {
+        if (!running) return false;
+        if (System.currentTimeMillis() - startedAt > MAX_TICK_MS) {
+            running = false;        // its callback was swallowed; let the next tick through
+            return false;
+        }
+        return true;
+    }
 
     /** Phases the engine can advance on its own, without user input. */
     public static boolean hasActiveMint(Context ctx) {
@@ -76,14 +101,30 @@ public final class MintDriver {
         return row != null && row.optInt("stuck", 0) == 1;
     }
 
+    /**
+     * True when any collection is parked as unrecoverable.
+     *
+     * hasWork() deliberately ignores stuck rows, so a stuck collection looks exactly like a
+     * finished one to the service. Without this, burning out on the 64KB cap was announced as
+     * "your collection is fully stamped" — the opposite of what happened.
+     */
+    public static boolean hasStuck(Context ctx) {
+        JSONArray rows = LocalStore.load(ctx);
+        for (int i = 0; i < rows.length(); i++) {
+            if (isStuck(rows.optJSONObject(i))) return true;
+        }
+        return false;
+    }
+
     /** Advance one collection by one step. {@code done} fires only when the result is STARTED. */
     public static Result tick(Context ctx, NodeApi node, final Done done) {
         if (node == null) return Result.NOT_PAIRED;
-        if (running) return Result.BUSY;
+        if (inFlight()) return Result.BUSY;
         if (!hasActiveMint(ctx)) {
             return needsImages(ctx) ? Result.NEEDS_IMAGES : Result.NOTHING_TO_DO;
         }
         running = true;
+        startedAt = System.currentTimeMillis();
         MintEngine.tick(ctx, node, message -> {
             running = false;
             if (done != null) done.onFinished(message == null ? "" : message);

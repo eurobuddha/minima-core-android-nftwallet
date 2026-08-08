@@ -419,7 +419,9 @@ public class MainActivity extends AppCompatActivity {
             JSONObject c = arr.optJSONObject(i);
             if (c == null) continue;
             Coin coin = Coin.from(c);
-            if (coin.isWellFormed()) coins.add(coin); else dropped++;
+            if (!coin.isWellFormed()) { dropped++; continue; }
+            if (StateNft.isBuried(coin)) continue;   // in the graveyard — not part of the wallet
+            coins.add(coin);
         }
         if (dropped > 0) {
             Toast.makeText(this, dropped + " malformed coin(s) ignored — a token's metadata looks hostile.",

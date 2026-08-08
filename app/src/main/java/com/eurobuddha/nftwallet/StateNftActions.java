@@ -328,7 +328,8 @@ public final class StateNftActions {
                     makeDismissable(progress);
                     return;
                 }
-                transferNext(act, tokenid, to, coins, 0, new int[]{0}, skipped, progress, onDone);
+                transferNext(act, tokenid, to, coins, 0, new int[]{0}, skipped, new String[]{null},
+                        progress, onDone);
             }
             @Override public void onError(String message) {
                 setMessage(progress, NodeApi.ERR_TOO_LONG.equals(message)
@@ -342,11 +343,16 @@ public final class StateNftActions {
 
     private static void transferNext(final MainActivity act, final String tokenid, final String to,
                                      final java.util.List<JSONObject> coins, final int i,
-                                     final int[] done, final int skipped,
+                                     final int[] done, final int skipped, final String[] firstError,
                                      final Sheet.Progress progress, final Runnable onDone) {
         if (i >= coins.size()) {
+            int failed = coins.size() - done[0];
             setMessage(progress, "Posted " + done[0] + " of " + coins.size() + " transfers"
                     + (skipped > 0 ? " (" + skipped + " skipped)" : "") + ".\n\n"
+                    // A bare count leaves the user guessing between "not enough Minima", "already
+                    // spent" and "node not enabled" — three very different next steps.
+                    + (failed > 0 && firstError[0] != null
+                        ? failed + " failed. First error: " + firstError[0] + "\n\n" : "")
                     + "The chain has the last word — items leave your wallet as each spend "
                     + "confirms, over the next few blocks.");
             makeDismissable(progress);
@@ -364,11 +370,15 @@ public final class StateNftActions {
             @Override public void ok(JSONObject last) {
                 act.node().cmd("txndelete id:" + txn, NOOP);
                 done[0]++;
-                transferNext(act, tokenid, to, coins, i + 1, done, skipped, progress, onDone);
+                transferNext(act, tokenid, to, coins, i + 1, done, skipped, firstError, progress, onDone);
             }
             @Override public void fail(String message) {
-                // One failure must not strand the rest — carry on and report the true tally.
-                transferNext(act, tokenid, to, coins, i + 1, done, skipped, progress, onDone);
+                // One failure must not strand the rest — carry on and report the true tally,
+                // keeping the first reason so the summary can say WHY, not just how many.
+                if (firstError[0] == null && message != null && !message.isEmpty()) {
+                    firstError[0] = message;
+                }
+                transferNext(act, tokenid, to, coins, i + 1, done, skipped, firstError, progress, onDone);
             }
         });
     }

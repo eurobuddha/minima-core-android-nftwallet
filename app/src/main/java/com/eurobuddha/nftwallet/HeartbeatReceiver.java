@@ -23,9 +23,13 @@ public class HeartbeatReceiver extends BroadcastReceiver {
     private static final int REQUEST_CODE = 31;
 
     @Override public void onReceive(Context ctx, Intent intent) {
-        // Chain the next one FIRST: a crash below must never end the heartbeat.
+        // Nothing to mint: stop the chain. This check MUST come before the reschedule below — an
+        // earlier version chained first and then returned here, so the "let the alarm lapse" it
+        // claimed could never happen and every install kept firing an exact allow-while-idle
+        // RTC_WAKEUP every 15 minutes forever, long after the last collection was minted.
+        if (!MintDriver.hasWork(ctx)) { cancel(ctx); return; }
+        // Chain the next one BEFORE the work below: a crash there must never end the heartbeat.
         schedule(ctx);
-        if (!MintDriver.hasWork(ctx)) return;   // nothing to mint — let the alarm lapse
         try {
             ContextCompat.startForegroundService(ctx,
                     new Intent(ctx, MintService.class).setAction(MintService.ACTION_HEARTBEAT));
@@ -45,6 +49,20 @@ public class HeartbeatReceiver extends BroadcastReceiver {
             } else {
                 am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
             }
+        } catch (Exception ignored) {}
+    }
+
+    /** Stop the chain. Safe to call when nothing is scheduled. */
+    public static void cancel(Context ctx) {
+        try {
+            AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+            if (am == null) return;
+            // Same request code + component as schedule(), so this matches the pending alarm.
+            PendingIntent pi = PendingIntent.getBroadcast(ctx, REQUEST_CODE,
+                    new Intent(ctx, HeartbeatReceiver.class),
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            am.cancel(pi);
+            pi.cancel();
         } catch (Exception ignored) {}
     }
 }

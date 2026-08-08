@@ -25,7 +25,12 @@ public class MintWorker extends Worker {
     public MintWorker(@NonNull Context ctx, @NonNull WorkerParameters params) { super(ctx, params); }
 
     @NonNull @Override public Result doWork() {
-        if (!MintDriver.hasWork(getApplicationContext())) return Result.success();
+        // Nothing left to mint: retire the periodic work rather than waking every 15 minutes
+        // forever. schedule() uses KEEP, so a later mint re-enqueues it cleanly.
+        if (!MintDriver.hasWork(getApplicationContext())) {
+            cancel(getApplicationContext());
+            return Result.success();
+        }
         try {
             ContextCompat.startForegroundService(getApplicationContext(),
                     new Intent(getApplicationContext(), MintService.class));
@@ -39,5 +44,10 @@ public class MintWorker extends Worker {
                 MintWorker.class, 15, TimeUnit.MINUTES).build();
         WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(
                 UNIQUE, ExistingPeriodicWorkPolicy.KEEP, req);
+    }
+
+    /** Retire the relauncher once there's nothing to relaunch it for. */
+    public static void cancel(Context ctx) {
+        try { WorkManager.getInstance(ctx).cancelUniqueWork(UNIQUE); } catch (Exception ignored) {}
     }
 }

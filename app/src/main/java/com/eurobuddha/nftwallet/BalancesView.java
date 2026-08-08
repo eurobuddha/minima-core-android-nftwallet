@@ -471,24 +471,33 @@ public class BalancesView extends BaseView {
             @Override public void onResult(org.json.JSONObject json) {
                 org.json.JSONArray arr = json.optJSONArray("response");
                 if (arr == null || arr.length() == 0) return;
-                into.addView(sectionLabel("Coins (" + arr.length() + ")  ·  tap for full detail"));
-                int n = Math.min(arr.length(), MAX_COIN_ROWS);
-                for (int i = 0; i < n; i++) {
+                // Filter BEFORE counting, so the header and the "showing N of M" line describe the
+                // coins actually rendered rather than the raw reply.
+                final java.util.List<Coin> live = new java.util.ArrayList<>();
+                for (int i = 0; i < arr.length(); i++) {
                     org.json.JSONObject cj = arr.optJSONObject(i);
                     if (cj == null) continue;
-                    final Coin c = Coin.from(cj);
+                    Coin c = Coin.from(cj);
                     // Same ingestion rule as the main coin list: a coin whose command-bound fields
                     // aren't well formed never reaches the UI or a transaction.
                     if (!c.isWellFormed()) continue;
+                    if (StateNft.isBuried(c)) continue;   // graveyard — not part of the wallet
+                    live.add(c);
+                }
+                if (live.isEmpty()) return;
+                into.addView(sectionLabel("Coins (" + live.size() + ")  ·  tap for full detail"));
+                int n = Math.min(live.size(), MAX_COIN_ROWS);
+                for (int i = 0; i < n; i++) {
+                    final Coin c = live.get(i);
                     // sendable flag comes from the main wallet scan when we track this coin
                     for (Coin known : act.coins()) {
                         if (known.coinid.equals(c.coinid)) { c.sendable = known.sendable; break; }
                     }
                     into.addView(coinRow(c));
                 }
-                if (arr.length() > n) {
+                if (live.size() > n) {
                     TextView more = new TextView(act);
-                    more.setText("Showing " + n + " of " + arr.length() + " coins.");
+                    more.setText("Showing " + n + " of " + live.size() + " coins.");
                     more.setTextColor(Design.dim()); more.setTextSize(11f);
                     more.setPadding(0, dp(4), 0, 0);
                     into.addView(more);

@@ -64,6 +64,8 @@ public class MintView extends BaseView {
     /** Item #1 pre-shrunk to ICON_BUDGET, prepared in the background when slot 1 is filled, so the
      *  confirm step never has to decode and re-encode on the UI thread. */
     private String colIconDefault = "";
+    /** Which item-#1 image colIconDefault was derived from, so we only shrink once per image. */
+    private String colIconDefaultSource = "";
     /** Per-item base64 images, key = item index 1..size. */
     private final java.util.HashMap<Integer, String> colImages = new java.util.HashMap<>();
 
@@ -751,10 +753,15 @@ public class MintView extends BaseView {
      * second. Prepare it the moment slot 1 is filled instead.
      */
     private void prepareIconDefault(final String first) {
-        if (first == null || first.isEmpty()) { colIconDefault = ""; return; }
+        if (first == null || first.isEmpty()) { colIconDefault = ""; colIconDefaultSource = ""; return; }
         if (!colIconB64.isEmpty()) return;                       // a chosen icon wins
         if (first.equals(colIconDefaultSource)) return;          // already done for this image
         colIconDefaultSource = first;
+        // Drop the value derived from the PREVIOUS image before starting the new shrink. Without
+        // this, swapping slot 1 left the old shrunk copy in place for the second or so the new one
+        // takes — the preview showed the old image, and confirming in that window sealed the old
+        // image into the token record, which is immutable and unfixable after creation.
+        colIconDefault = "";
         new Thread(() -> {
             final String shrunk = ImageTools.recompressBase64(first, ICON_BUDGET);
             act.runOnUiThread(() -> {
@@ -764,9 +771,6 @@ public class MintView extends BaseView {
             });
         }).start();
     }
-
-    /** Which item-#1 image colIconDefault was derived from, so we only shrink once per image. */
-    private String colIconDefaultSource = "";
 
     private void pickCollectionIcon() {
         act.pickImage(uri -> {

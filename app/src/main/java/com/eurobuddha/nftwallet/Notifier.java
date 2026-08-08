@@ -40,7 +40,7 @@ public final class Notifier {
                 .setContentTitle(title)
                 .setContentText(body)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
-                .setSmallIcon(android.R.drawable.ic_menu_gallery)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentIntent(openApp(c))
                 .setAutoCancel(true)
                 .build());

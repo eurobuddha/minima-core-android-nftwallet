@@ -187,6 +187,19 @@ public class MainActivity extends AppCompatActivity {
         viewPager.setOffscreenPageLimit(6);
         viewPager.setAdapter(pager);
 
+        // Back steps out of a drilled-into Gallery collection before it leaves the app — otherwise
+        // the only way out of a collection is the on-screen crumb, which reads as a trap.
+        getOnBackPressedDispatcher().addCallback(this,
+                new androidx.activity.OnBackPressedCallback(true) {
+            @Override public void handleOnBackPressed() {
+                GalleryView g = (GalleryView) views[TAB_GALLERY];
+                if (viewPager.getCurrentItem() == TAB_GALLERY && g.onBackPressed()) return;
+                setEnabled(false);           // let the default finish-the-Activity behaviour run
+                getOnBackPressedDispatcher().onBackPressed();
+                setEnabled(true);
+            }
+        });
+
         TabLayout tabs = findViewById(R.id.tabs);
         tabs.setupWithViewPager(viewPager);
         tabs.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {

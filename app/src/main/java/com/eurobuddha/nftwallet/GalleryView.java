@@ -28,10 +28,15 @@ import java.util.Set;
  * The Gallery tab — the NFT-first view of the wallet: a two-column grid of every NFT you hold.
  *
  *  - Regular NFTs (decimals-0 tokens) are one card per token.
- *  - StateNFT collections expand into one card PER OWNED ITEM (per coin), each with its sealed
- *    index and its own image (embedded state art beats the URL base).
+ *  - StateNFT collections collapse to ONE card showing the collection icon and how many of the
+ *    edition you hold. Tapping it drills into that collection, where the grid becomes one card per
+ *    owned item with its sealed index and its own image (embedded state art beats the URL base).
+ *    A 60-item collection used to bury every other NFT you owned under 60 near-identical tiles.
  *  - Collected / Favourites tabs (long-press or ♥ in detail to favourite), search by name,
  *    creator or tokenid, and a deep detail dialog with Send / Transfer / Bury.
+ *
+ * Favourites are per ITEM, so that tab always lists items directly — grouping there would hide the
+ * one thing the user favourited behind a card they'd have to open.
  */
 public class GalleryView extends BaseView {
 
@@ -44,7 +49,13 @@ public class GalleryView extends BaseView {
 
     private EditText search;
     private TextView tabCollected, tabFavs, emptyNote;
+    private LinearLayout crumbBar;
+    private TextView crumbBack, crumbActions;
     private boolean showFavs = false;
+
+    /** tokenid of the collection we've drilled into, or null at the top level. */
+    private String openCollection = null;
+    private String openCollectionName = "";
 
     /** tokenid → token record (script + meta) from `tokens tokenid:`; null value = fetch in flight. */
     private final Map<String, JSONObject> tokenRecords = new HashMap<>();
@@ -66,8 +77,10 @@ public class GalleryView extends BaseView {
 
         LinearLayout tabs = new LinearLayout(act);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
-        tabCollected = tabBtn("COLLECTED", v -> { showFavs = false; refresh(); });
-        tabFavs = tabBtn("FAVOURITES", v -> { showFavs = true; refresh(); });
+        // Either tab returns you to the top level: staying inside a collection while switching to
+        // Favourites would show a filtered subset with no visible reason for what's missing.
+        tabCollected = tabBtn("COLLECTED", v -> { showFavs = false; closeCollection(); });
+        tabFavs = tabBtn("FAVOURITES", v -> { showFavs = true; closeCollection(); });
         tabs.addView(tabCollected, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         tabs.addView(tabFavs, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         header.addView(tabs);
@@ -91,6 +104,40 @@ public class GalleryView extends BaseView {
             @Override public void afterTextChanged(android.text.Editable s) { rebuild(); }
         });
         header.addView(search);
+
+        // Shown only while drilled into a collection.
+        crumbBar = new LinearLayout(act);
+        crumbBar.setOrientation(LinearLayout.HORIZONTAL);
+        crumbBar.setGravity(Gravity.CENTER_VERTICAL);
+        crumbBar.setBackgroundColor(Design.surface2());
+        crumbBar.setPadding(dp(10), dp(8), dp(10), dp(8));
+        crumbBar.setVisibility(View.GONE);
+
+        crumbBack = new TextView(act);
+        crumbBack.setTextColor(Design.accent());
+        crumbBack.setTextSize(12f);
+        crumbBack.setTypeface(Design.typefaceBold());
+        crumbBack.setMaxLines(1);
+        crumbBack.setEllipsize(TextUtils.TruncateAt.END);
+        crumbBack.setOnClickListener(v -> closeCollection());
+        crumbBar.addView(crumbBack, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        crumbActions = new TextView(act);
+        crumbActions.setText("COLLECTION ⌄");
+        crumbActions.setTextColor(Design.dim());
+        crumbActions.setTextSize(10f);
+        crumbActions.setLetterSpacing(0.08f);
+        crumbActions.setTypeface(Design.typefaceBold());
+        crumbActions.setPadding(dp(8), 0, 0, 0);
+        crumbActions.setOnClickListener(v -> showCollectionActions());
+        crumbBar.addView(crumbActions);
+
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        clp.bottomMargin = dp(8);
+        crumbBar.setLayoutParams(clp);
+        header.addView(crumbBar);
 
         emptyNote = new TextView(act);
         emptyNote.setTextColor(Design.dim());
@@ -120,6 +167,12 @@ public class GalleryView extends BaseView {
         tabCollected.setBackgroundColor(!fav ? Design.accent() : Design.surface2());
         tabFavs.setTextColor(fav ? Design.onAccent() : Design.dim());
         tabFavs.setBackgroundColor(fav ? Design.accent() : Design.surface2());
+        if (openCollection != null) {
+            crumbBar.setVisibility(View.VISIBLE);
+            crumbBack.setText("←  All NFTs   ·   " + openCollectionName);
+        } else {
+            crumbBar.setVisibility(View.GONE);
+        }
         rebuild();
     }
 
@@ -136,6 +189,9 @@ public class GalleryView extends BaseView {
         items.clear();
         String q = search == null ? "" : search.getText().toString().trim().toLowerCase();
         Set<String> favs = favs();
+        // Group only at the top level of the Collected tab. Favourites are per item, and once
+        // you've drilled in the whole point is to see the items.
+        final boolean grouped = !showFavs && openCollection == null;
 
         for (TokenBalance b : act.balances()) {
             if (!isNftCandidate(b)) continue;
@@ -146,7 +202,10 @@ public class GalleryView extends BaseView {
             boolean stateNft = !script.isEmpty() && StateNft.isStateNftScript(script);
 
             if (stateNft) {
+                // Drilled in: every other collection is out of scope.
+                if (openCollection != null && !openCollection.equals(b.tokenid)) continue;
                 StateNft.Meta meta = StateNft.parseMeta(b.tokenid, record);
+                List<GItem> mine = new ArrayList<>();
                 for (Coin c : act.coins()) {
                     if (!c.tokenid.equals(b.tokenid)) continue;
                     String idx = StateNft.stamped(c.raw);
@@ -164,8 +223,14 @@ public class GalleryView extends BaseView {
                     it.webvalidate = meta.webvalidate;
                     it.externalUrl = meta.externalUrl;
                     it.description = meta.description;
-                    items.add(it);
+                    it.searchBlob = blob(it.name, it.creator, it.tokenid);
+                    mine.add(it);
                 }
+                if (mine.isEmpty()) continue;
+                // Sealed index order, not UTXO order — #2 should follow #1 every time.
+                java.util.Collections.sort(mine, (x, y) -> Integer.compare(x.idx, y.idx));
+                if (grouped) items.add(collectionCard(b, meta, mine));
+                else items.addAll(mine);
             } else {
                 GItem it = new GItem();
                 it.tokenid = b.tokenid;
@@ -180,6 +245,7 @@ public class GalleryView extends BaseView {
                 it.webvalidate = b.meta == null ? "" : b.meta.webvalidate;
                 it.externalUrl = b.meta == null ? "" : b.meta.externalUrl;
                 it.description = b.meta == null ? "" : b.meta.description;
+                it.searchBlob = blob(it.name, it.creator, it.tokenid);
                 items.add(it);
             }
         }
@@ -188,10 +254,9 @@ public class GalleryView extends BaseView {
         List<GItem> filtered = new ArrayList<>();
         for (GItem it : items) {
             if (showFavs && !favs.contains(it.favKey)) continue;
-            if (!q.isEmpty()
-                    && !(it.name != null && it.name.toLowerCase().contains(q))
-                    && !(it.creator != null && it.creator.toLowerCase().contains(q))
-                    && !it.tokenid.toLowerCase().contains(q)) continue;
+            // searchBlob carries a collection card's ITEM names too, so searching "#7" still finds
+            // the collection holding it rather than coming back empty.
+            if (!q.isEmpty() && (it.searchBlob == null || !it.searchBlob.contains(q))) continue;
             filtered.add(it);
         }
         items.clear();
@@ -199,8 +264,87 @@ public class GalleryView extends BaseView {
 
         emptyNote.setVisibility(items.isEmpty() ? View.VISIBLE : View.GONE);
         emptyNote.setText(showFavs ? "No favourites yet — open an NFT and tap ♥."
+                : openCollection != null ? "You no longer hold any items of this collection."
                 : "No NFTs yet — mint one from the Mint tab.");
         adapter.notifyDataSetChanged();
+    }
+
+    /** Lower-cased haystack for the search box. Nulls are skipped, not rendered as "null". */
+    private static String blob(String... parts) {
+        StringBuilder sb = new StringBuilder();
+        for (String p : parts) if (p != null) sb.append(p).append(' ');
+        return sb.toString().toLowerCase();
+    }
+
+    /** The single card that stands in for a whole StateNFT collection at the top level. */
+    private GItem collectionCard(TokenBalance b, StateNft.Meta meta, List<GItem> mine) {
+        GItem it = new GItem();
+        it.collection = true;
+        it.stateNft = true;
+        it.tokenid = b.tokenid;
+        it.meta = meta;
+        it.owned = mine.size();
+        it.idx = -1;
+        it.name = meta.name;
+        it.creator = b.meta == null ? "" : b.meta.owner;
+        it.sub = "collection · " + mine.size() + " of " + meta.size + " held";
+        // The token record's own icon is the collection's cover; fall back to the lowest-numbered
+        // item you hold, which is what the mint form defaults the icon to anyway.
+        String cover = b.meta == null ? "" : b.meta.iconUrl;
+        it.imageUrl = cover == null || cover.isEmpty() ? mine.get(0).imageUrl : cover;
+        it.favKey = b.tokenid;
+        it.webvalidate = meta.webvalidate;
+        it.externalUrl = meta.externalUrl;
+        it.description = meta.description;
+        StringBuilder names = new StringBuilder(blob(it.name, it.creator, it.tokenid));
+        for (GItem m : mine) names.append(m.searchBlob);
+        it.searchBlob = names.toString();
+        return it;
+    }
+
+    // ===================== drill in / out =====================
+
+    private void openCollection(GItem card) {
+        openCollection = card.tokenid;
+        openCollectionName = card.name == null ? "Collection" : card.name;
+        refresh();
+        grid.scrollToPosition(0);
+    }
+
+    private void closeCollection() {
+        openCollection = null;
+        openCollectionName = "";
+        refresh();
+        grid.scrollToPosition(0);
+    }
+
+    /** True if the tab handled a Back press by stepping out of a collection. */
+    public boolean onBackPressed() {
+        if (openCollection == null) return false;
+        closeCollection();
+        return true;
+    }
+
+    /** Whole-collection actions, reachable from inside the collection where they make sense. */
+    private void showCollectionActions() {
+        if (openCollection == null) return;
+        final String tokenid = openCollection;
+        final String name = openCollectionName;
+        String creatorPk = "";
+        JSONObject record = tokenRecords.get(tokenid);
+        if (record != null) creatorPk = StateNft.creatorPk(record.optString("script", ""));
+        final String pk = creatorPk;
+        Sheet.create(act, name)
+                .subtitle("Actions that apply to every item of this collection you still hold. "
+                        + "Each item is its own transaction — the chain requires that.")
+                .action("Send the whole collection", Sheet.Style.PRIMARY,
+                        () -> StateNftActions.transferCollectionDialog(act, tokenid, name,
+                                () -> act.reload()))
+                .action("Bury the whole collection", Sheet.Style.DANGER,
+                        () -> StateNftActions.buryCollectionDialog(act, tokenid, name, pk,
+                                () -> act.reload()))
+                .action("Close", Sheet.Style.SECONDARY, null)
+                .show();
     }
 
     /** Fetch the token record once per tokenid (script decides state-vs-regular; meta feeds images). */
@@ -243,7 +387,10 @@ public class GalleryView extends BaseView {
 
     private static class GItem {
         String tokenid, name, creator, sub, imageUrl, favKey, webvalidate, externalUrl, description;
+        String searchBlob;         // lower-cased haystack; a collection's includes its item names
         boolean stateNft;
+        boolean collection;        // this card stands for a whole collection, not one item
+        int owned;                 // collection cards: how many of the edition you hold
         int idx;
         Coin coin;                 // state item's UTXO
         TokenBalance balance;      // regular NFT's balance row
@@ -328,8 +475,18 @@ public class GalleryView extends BaseView {
             final GItem it = items.get(position);
             h.name.setText(it.name == null ? "NFT" : it.name);
             h.sub.setText(it.sub == null ? "" : it.sub.toUpperCase());
-            h.idxChip.setVisibility(it.stateNft && it.idx > 0 ? View.VISIBLE : View.GONE);
-            if (it.stateNft && it.meta != null) h.idxChip.setText("#" + it.idx + " / " + it.meta.size);
+
+            if (it.collection) {
+                // The chip carries the count, so a stack of items reads as a stack at a glance.
+                h.idxChip.setVisibility(View.VISIBLE);
+                h.idxChip.setText("▣ " + it.owned + (it.owned == 1 ? " ITEM" : " ITEMS"));
+            } else if (it.stateNft && it.idx > 0 && it.meta != null) {
+                h.idxChip.setVisibility(View.VISIBLE);
+                h.idxChip.setText("#" + it.idx + " / " + it.meta.size);
+            } else {
+                h.idxChip.setVisibility(View.GONE);
+            }
+
             boolean fav = favs().contains(it.favKey);
             h.heart.setText(fav ? "♥" : "♡");
             h.heart.setTextColor(fav ? 0xFFFF5A6E : 0xFFFFFFFF);
@@ -340,7 +497,8 @@ public class GalleryView extends BaseView {
                 ImageLoader.loadOver(act, it.imageUrl, h.art, null);
             }
             ((FrameLayout) h.itemView).setForeground(null);
-            h.itemView.setOnClickListener(v -> showDetail(it));
+            // A collection card opens the collection; everything else opens its detail sheet.
+            h.itemView.setOnClickListener(v -> { if (it.collection) openCollection(it); else showDetail(it); });
             h.itemView.setOnLongClickListener(v -> { toggleFav(it.favKey); return true; });
         }
     }

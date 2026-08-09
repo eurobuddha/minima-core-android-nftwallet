@@ -130,13 +130,36 @@ public final class StateNft {
      *  tokencreate, so such a mint must be refused before it exists. Shared
      *  calibration with Atelier (measured: an 18.4KB definition failed all
      *  splits; estimate-to-actual runs ~1.55x). */
-    public static final int DEF_BUDGET = 10500;
+    /* ---- the JOINT transfer budget (ported from Atelier 4.1.10) ----
+     * A sealed transfer carries the token record TWICE and the embedded
+     * image TWICE plus a multi-KB signature, all under the 64KB TxPoW cap.
+     * And the creator signature (signtype/signedby/signature, ~8.4KB) lands
+     * in the record AFTER tokencreate — invisible to any estimate of the
+     * metadata alone. Atelier's 'Math' passed every estimator at ~10K and
+     * sealed at 18.4K, past the split bound, untransferable forever. These
+     * are the exact bounds, measured on-chain. */
+    public static final int TRANSFER_PAIR_BUDGET = 23000;  // record + largest image
+    public static final int DEF_WRAPPER = 533;             // fullDef - len(metaJSON)
+    public static final int DEF_SPLIT_MAX = 17300;         // 3 records + sig under 64KB
+    public static final int DEF_SIGN_WEIGHT = 8400;        // signtype+signedby+signature
 
-    public static int estimatedDefLen(String icon, String name, String desc, String externalUrl) {
-        return (icon == null ? 0 : icon.length())
-             + (name == null ? 0 : name.length())
-             + (desc == null ? 0 : desc.length())
-             + (externalUrl == null ? 0 : externalUrl.length()) + 900;
+    /** Exact record length this Meta would seal (metadata JSON + wrapper). */
+    public static int defActualLen(Meta m) {
+        return tokenMetadata(m).toString().length() + DEF_WRAPPER;
+    }
+
+    /** The gate: "sign" when the TRUE signed weights fit, "nosign" when
+     *  dropping the redundant signature saves transferability (the locked
+     *  script's SIGNEDBY still proves the creator), else a refusal message
+     *  with the real numbers. */
+    public static String jointGate(int metaLen, int maxImg) {
+        int unsigned = metaLen + DEF_WRAPPER;
+        int signed = unsigned + DEF_SIGN_WEIGHT;
+        if (signed <= DEF_SPLIT_MAX && signed + maxImg <= TRANSFER_PAIR_BUDGET) return "sign";
+        if (unsigned <= DEF_SPLIT_MAX && unsigned + maxImg <= TRANSFER_PAIR_BUDGET) return "nosign";
+        return "definition " + unsigned + "B + largest image " + maxImg
+             + "B breaks the transfer budget (" + TRANSFER_PAIR_BUDGET
+             + "B) — hosted icon, shorter text or smaller images";
     }
 
     public static JSONObject tokenMetadata(Meta m) {

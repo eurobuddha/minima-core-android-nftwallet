@@ -14,26 +14,38 @@ import org.junit.Test;
  */
 public class DefBudgetTest {
 
-    @Test public void heavyIconAndTextTripTheGuard() {
-        String icon = "A".repeat(6000);
-        String longDesc = "B".repeat(5000);
-        assertTrue(StateNft.estimatedDefLen(icon, "Math", longDesc, "") > StateNft.DEF_BUDGET);
+    /* The gate reproduces Atelier's measured failure: 'Math' passed every
+     * estimator at ~10K visible metadata, then the ~8.4KB creator signature
+     * landed in the record AFTER tokencreate — 18.4K, past the split bound. */
+
+    @Test public void lightCollectionSignsAndPasses() {
+        assertEquals("sign", StateNft.jointGate(3000, 5500));
     }
 
-    @Test public void slimmedIconPasses() {
-        String slim = "A".repeat(4000);
-        String longDesc = "B".repeat(5000);
-        assertTrue(StateNft.estimatedDefLen(slim, "Math", longDesc, "") <= StateNft.DEF_BUDGET);
+    @Test public void mathWeightRecordMintsUnsignedInstead() {
+        // meta 9554 signed would be 18.5K > split max; unsigned 10.1K fits
+        assertEquals("nosign", StateNft.jointGate(9554, 5500));
     }
 
-    @Test public void normalCollectionIsNowhereNearTheBudget() {
-        // 6K icon (the ICON_BUDGET cap) + realistic text — the everyday case
-        assertTrue(StateNft.estimatedDefLen("A".repeat(6000), "My Collection",
-                "Twenty sealed plates", "https://example.com") <= StateNft.DEF_BUDGET);
+    @Test public void overJointPairIsRefused() {
+        String g = StateNft.jointGate(11500, 14000);
+        assertNotEquals("sign", g);
+        assertNotEquals("nosign", g);
+        assertTrue(g.contains("transfer budget"));
     }
 
-    @Test public void nullsCountAsZero() {
-        assertEquals(900, StateNft.estimatedDefLen(null, null, null, null));
+    @Test public void unsplittableRecordIsRefusedOutright() {
+        String g = StateNft.jointGate(18000, 0);
+        assertNotEquals("sign", g);
+        assertNotEquals("nosign", g);
+    }
+
+    @Test public void exactDefLenUsesTheRealMetadata() {
+        StateNft.Meta m = new StateNft.Meta();
+        m.name = "X";
+        m.mode = "embed";
+        assertEquals(StateNft.tokenMetadata(m).toString().length() + StateNft.DEF_WRAPPER,
+                StateNft.defActualLen(m));
     }
 
     /* (k units + change + input) full token definitions must fit ~40KB under

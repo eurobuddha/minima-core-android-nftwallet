@@ -129,20 +129,23 @@ public final class MintEngine {
             return;
         }
         StateNft.Meta m = metaFromRow(row);
-        // Defence in depth: resumed rows re-enter here without passing the UI guard.
-        boolean iconEmbedded = m.icon != null && !m.icon.isEmpty() && !m.icon.startsWith("http");
-        if (iconEmbedded && StateNft.estimatedDefLen(m.icon, m.name, m.description, m.externalUrl)
-                > StateNft.DEF_BUDGET) {
-            setError(ctx, row, "This collection's icon + text would seal an unsplittable token "
-                    + "definition — recreate it with a hosted icon URL or shorter text.", done);
+        // The engine is the last line: resumed rows re-enter here without the UI
+        // guard, and the ~8.4KB creator signature lands in the record AFTER
+        // tokencreate — so measure the TRUE weights, drop the redundant
+        // signature when that alone keeps the lots transferable, refuse when
+        // even unsigned cannot travel. Nothing doomed reaches the chain.
+        String gate = StateNft.jointGate(StateNft.tokenMetadata(m).toString().length(),
+                maxImageLen(row));
+        if (!"sign".equals(gate) && !"nosign".equals(gate)) {
+            setError(ctx, row, gate, done);
             return;
         }
         String cmd = "tokencreate name:" + StateNft.tokenMetadata(m).toString()
                 + " amount:" + row.optInt("size")
                 + " decimals:0"
                 + " script:\"" + StateNft.script(row.optString("creatorpk"), row.optString("mode")) + "\""
-                + " state:{\"0\":\"0\"}"
-                + " signtoken:" + row.optString("creatorpk");
+                + " state:{\"0\":\"0\"}";
+        if ("sign".equals(gate)) cmd += " signtoken:" + row.optString("creatorpk");
         if (!row.optString("webvalidate").isEmpty()) cmd += " webvalidate:" + row.optString("webvalidate");
         cmd(node, cmd, new Cb() {
             @Override public void ok(JSONObject res) {
@@ -496,6 +499,14 @@ public final class MintEngine {
             }
         }
         put(row, "items", items);
+    }
+
+    /** Largest embedded image (b64 chars) across the row's items. */
+    private static int maxImageLen(JSONObject row) {
+        int size = row.optInt("size", 0);
+        int max = 0;
+        for (int idx = 1; idx <= size; idx++) max = Math.max(max, itemImage(row, idx).length());
+        return max;
     }
 
     private static String itemImage(JSONObject row, int idx) {

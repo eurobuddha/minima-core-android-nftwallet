@@ -576,6 +576,19 @@ public class MintView extends BaseView {
         addConfirmRow(body, "Creator signature", nSign.isChecked() ? "yes (signtoken)" : "no");
         if (!burn.isEmpty() && positive(burn)) addConfirmRow(body, "Burn", burn + " MINIMA");
 
+        // Multi-edition NFTs split like any token, and every split output carries the
+        // full record — a signed 9K artimage record passes the eye but seals past the
+        // split bound. Exact check; the fix is theirs to choose.
+        if (editions > 1 && nSign.isChecked()) {
+            int metaLen = json.toString().length();
+            if (metaLen + StateNft.DEF_WRAPPER + StateNft.DEF_SIGN_WEIGHT > StateNft.DEF_SPLIT_MAX) {
+                status(nStatus, "Signed, this record would be " + (metaLen + StateNft.DEF_WRAPPER
+                        + StateNft.DEF_SIGN_WEIGHT) + "B — past the " + StateNft.DEF_SPLIT_MAX
+                        + "B split bound, so " + editions + " editions could never separate. "
+                        + "Untick the creator signature or use a smaller image.", false);
+                return;
+            }
+        }
         showConfirm("Mint this NFT?", body, "Mint NFT →", () -> {
             if (nSign.isChecked()) {
                 // fetch a wallet public key to sign the token as its creator
@@ -1046,26 +1059,28 @@ public class MintView extends BaseView {
         }
         final String extUrl = cExtUrl.getText().toString().trim();
         if (!extUrl.isEmpty() && badUrl(extUrl)) { status(cStatus, "External URL must be a plain http(s) link.", false); return; }
-        // Whole-definition guard: the icon check above is necessary but not sufficient — icon +
-        // name + description + external URL together become the token's immutable definition,
-        // and past StateNft.DEF_BUDGET (est.) the collection can never split. Slim the icon
-        // first; refuse rather than seal an unsplittable token.
+        // Whole-definition guard, EXACT (the Atelier joint model): the record the engine
+        // will seal plus the largest picked image must clear the transfer budget, and the
+        // engine may still have to drop the creator signature. Slim the icon first; refuse
+        // rather than seal an unsplittable token. The engine re-checks with the true
+        // weights before tokencreate regardless — this is the friendly early warning.
         String iconGuarded = icon;
         String iconDescGuarded = iconDesc;
-        if (colIconEmbed && !iconGuarded.isEmpty()
-                && StateNft.estimatedDefLen(iconGuarded, name, desc, extUrl) > StateNft.DEF_BUDGET) {
-            String slim = ImageTools.recompressBase64(iconGuarded, 4000);
-            if (!slim.isEmpty()
-                    && StateNft.estimatedDefLen(slim, name, desc, extUrl) <= StateNft.DEF_BUDGET) {
-                iconGuarded = slim;
-                iconDescGuarded = "embedded (slimmed to keep the token splittable)";
-            } else {
-                status(cStatus, "Icon + description together are too heavy for the token record ("
-                        + StateNft.estimatedDefLen(iconGuarded, name, desc, extUrl) + " of "
-                        + StateNft.DEF_BUDGET + " chars est.) — the collection could never be "
-                        + "split. Use a hosted icon URL or shorter text.", false);
-                return;
+        {
+            int maxImg = 0;
+            for (String img : colImages.values()) maxImg = Math.max(maxImg, img.length());
+            String g = StateNft.jointGate(colDefMetaLen(name, desc, extUrl, iconGuarded), maxImg);
+            if (!"sign".equals(g) && !"nosign".equals(g) && colIconEmbed && !iconGuarded.isEmpty()) {
+                String slim = ImageTools.recompressBase64(iconGuarded, 4000);
+                if (!slim.isEmpty()) {
+                    g = StateNft.jointGate(colDefMetaLen(name, desc, extUrl, slim), maxImg);
+                    if ("sign".equals(g) || "nosign".equals(g)) {
+                        iconGuarded = slim;
+                        iconDescGuarded = "embedded (slimmed to keep the token splittable)";
+                    }
+                }
             }
+            if (!"sign".equals(g) && !"nosign".equals(g)) { status(cStatus, g, false); return; }
         }
         final String iconF = iconGuarded;
         final String iconDescF = iconDescGuarded;
@@ -1092,6 +1107,17 @@ public class MintView extends BaseView {
 
         showConfirm("Start minting this collection?", body, "Start mint →", () ->
                 startCollection(name, size, desc, base, ext, iconF, extUrl, webv));
+    }
+
+    /** Exact metadata length the engine will seal for these collection fields. */
+    private int colDefMetaLen(String name, String desc, String extUrl, String icon) {
+        StateNft.Meta m = new StateNft.Meta();
+        m.name = name;
+        m.description = desc;
+        m.mode = colEmbedMode ? "embed" : "url";
+        m.icon = icon;
+        m.externalUrl = extUrl;
+        return StateNft.tokenMetadata(m).toString().length();
     }
 
     /** Fetch the creator identity, persist the LocalStore row, kick the engine, show progress. */

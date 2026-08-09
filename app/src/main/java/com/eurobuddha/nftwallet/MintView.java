@@ -1046,6 +1046,29 @@ public class MintView extends BaseView {
         }
         final String extUrl = cExtUrl.getText().toString().trim();
         if (!extUrl.isEmpty() && badUrl(extUrl)) { status(cStatus, "External URL must be a plain http(s) link.", false); return; }
+        // Whole-definition guard: the icon check above is necessary but not sufficient — icon +
+        // name + description + external URL together become the token's immutable definition,
+        // and past StateNft.DEF_BUDGET (est.) the collection can never split. Slim the icon
+        // first; refuse rather than seal an unsplittable token.
+        String iconGuarded = icon;
+        String iconDescGuarded = iconDesc;
+        if (colIconEmbed && !iconGuarded.isEmpty()
+                && StateNft.estimatedDefLen(iconGuarded, name, desc, extUrl) > StateNft.DEF_BUDGET) {
+            String slim = ImageTools.recompressBase64(iconGuarded, 4000);
+            if (!slim.isEmpty()
+                    && StateNft.estimatedDefLen(slim, name, desc, extUrl) <= StateNft.DEF_BUDGET) {
+                iconGuarded = slim;
+                iconDescGuarded = "embedded (slimmed to keep the token splittable)";
+            } else {
+                status(cStatus, "Icon + description together are too heavy for the token record ("
+                        + StateNft.estimatedDefLen(iconGuarded, name, desc, extUrl) + " of "
+                        + StateNft.DEF_BUDGET + " chars est.) — the collection could never be "
+                        + "split. Use a hosted icon URL or shorter text.", false);
+                return;
+            }
+        }
+        final String iconF = iconGuarded;
+        final String iconDescF = iconDescGuarded;
         final String webv = cWebv.getText().toString().trim();
         if (!webv.isEmpty() && badUrl(webv)) { status(cStatus, "Web validation must be a plain https link.", false); return; }
         cStatus.setVisibility(View.GONE);
@@ -1057,7 +1080,7 @@ public class MintView extends BaseView {
         if (!colEmbedMode) addConfirmRow(body, "Images at", base + "<i>" + ext);
         addConfirmRow(body, "Description", desc.isEmpty() ? "Not set" : desc);
         addConfirmRow(body, "Web validation", webv.isEmpty() ? "None set" : webv);
-        addConfirmRow(body, "Wallet icon", iconDesc);
+        addConfirmRow(body, "Wallet icon", iconDescF);
         addConfirmRow(body, "Contract", "SAMESTATE locked edition — immutable once stamped");
         TextView pipeline = new TextView(act);
         pipeline.setText("The mint runs in phases (CREATE → MOVE → SPLIT → STAMP), one transaction "
@@ -1068,7 +1091,7 @@ public class MintView extends BaseView {
         body.addView(pipeline);
 
         showConfirm("Start minting this collection?", body, "Start mint →", () ->
-                startCollection(name, size, desc, base, ext, icon, extUrl, webv));
+                startCollection(name, size, desc, base, ext, iconF, extUrl, webv));
     }
 
     /** Fetch the creator identity, persist the LocalStore row, kick the engine, show progress. */

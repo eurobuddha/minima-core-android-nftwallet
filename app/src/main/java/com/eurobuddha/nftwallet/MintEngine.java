@@ -129,6 +129,14 @@ public final class MintEngine {
             return;
         }
         StateNft.Meta m = metaFromRow(row);
+        // Defence in depth: resumed rows re-enter here without passing the UI guard.
+        boolean iconEmbedded = m.icon != null && !m.icon.isEmpty() && !m.icon.startsWith("http");
+        if (iconEmbedded && StateNft.estimatedDefLen(m.icon, m.name, m.description, m.externalUrl)
+                > StateNft.DEF_BUDGET) {
+            setError(ctx, row, "This collection's icon + text would seal an unsplittable token "
+                    + "definition — recreate it with a hosted icon URL or shorter text.", done);
+            return;
+        }
         String cmd = "tokencreate name:" + StateNft.tokenMetadata(m).toString()
                 + " amount:" + row.optInt("size")
                 + " decimals:0"
@@ -192,9 +200,33 @@ public final class MintEngine {
             if (!coinUsable(c)) { setError(ctx, row, "malformed coin in reply - refusing to build a txn", done); return; }
             if (!LocalStore.pendingOk(ctx, c.optString("coinid"), tip)) { done.done("Split pending"); return; }
             LocalStore.setPending(ctx, c.optString("coinid"), tip);
-            splitCoin(node, row, c, Math.min(3, parseInt(c.optString("tokenamount", "1"))),
-                    () -> done.done("Split posted"), e -> setError(ctx, row, e, done));
+            /* Every token-carrying output (and the input) embeds the FULL token
+             * definition. A heavy definition with a fixed 3-unit batch builds a
+             * txn the chain rejects silently — measure once, size the batch. */
+            cmd(node, "tokens tokenid:" + row.optString("tokenid"), new Cb() {
+                @Override public void ok(JSONObject res) {
+                    Object r = res.opt("response");
+                    int defLen = r == null ? 4000 : r.toString().length();
+                    int k = Math.min(splitBatch(defLen), parseInt(c.optString("tokenamount", "1")));
+                    splitCoin(node, row, c, k,
+                            () -> done.done("Split posted"), e -> setError(ctx, row, e, done));
+                }
+                @Override public void fail(String e) {
+                    // unknown definition size: be conservative
+                    splitCoin(node, row, c, Math.min(splitBatch(12000), parseInt(c.optString("tokenamount", "1"))),
+                            () -> done.done("Split posted"), e2 -> setError(ctx, row, e2, done));
+                }
+            });
         }, e -> setError(ctx, row, e, done));
+    }
+
+    /** Unit outputs per split txn such that (k units + change + input) token
+     *  definitions stay within ~40KB, leaving 24KB headroom for the signature
+     *  and proofs under the 64KB TxPoW cap. Legacy ~7KB definitions keep the
+     *  proven 3-unit batch; heavier definitions drop toward unit+change. */
+    static int splitBatch(int defLen) {
+        int defs = Math.max(1, 40000 / Math.max(1, defLen));
+        return Math.max(1, Math.min(3, defs - 2));
     }
 
     private static void splitCoin(NodeApi node, JSONObject row, JSONObject coin, int k, Runnable ok, java.util.function.Consumer<String> fail) {

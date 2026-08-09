@@ -123,6 +123,22 @@ public final class StateNft {
                 + "VERIFYOUT(@INPUT GETOUTADDR(@INPUT) @AMOUNT @TOKENID TRUE)";
     }
 
+    /** Estimated on-chain token-definition weight at mint time: icon + name +
+     *  description + external URL + ~900 chars of script/JSON scaffolding.
+     *  Definitions past ~10.5K (estimated) cannot split reliably under the
+     *  64KB TxPoW cap even at unit+change — the definition is IMMUTABLE after
+     *  tokencreate, so such a mint must be refused before it exists. Shared
+     *  calibration with Atelier (measured: an 18.4KB definition failed all
+     *  splits; estimate-to-actual runs ~1.55x). */
+    public static final int DEF_BUDGET = 10500;
+
+    public static int estimatedDefLen(String icon, String name, String desc, String externalUrl) {
+        return (icon == null ? 0 : icon.length())
+             + (name == null ? 0 : name.length())
+             + (desc == null ? 0 : desc.length())
+             + (externalUrl == null ? 0 : externalUrl.length()) + 900;
+    }
+
     public static JSONObject tokenMetadata(Meta m) {
         JSONObject meta = new JSONObject();
         put(meta, "name", m.name);

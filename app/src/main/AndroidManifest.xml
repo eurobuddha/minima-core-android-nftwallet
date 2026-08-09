@@ -25,8 +25,15 @@
         <package android:name="org.minimarex.minimacore" />
     </queries>
 
+    <!-- allowBackup=false: the whole apks/ fleet was scaffolded with allowBackup="true" and empty backup
+         rules, so Android Auto Backup uploaded each app's entire data directory to the user's cloud and
+         restored it on reinstall. Harmless-looking apps still carried the node pairing token, and a
+         reinstall must be a true reset everywhere, not just in the apps holding keys.
+         At stake here: nftwallet_distribute — an IN-FLIGHT AIRDROP JOB persisted across restarts (DistributeJob.java:77-95).
+         Resuming a restored job against a different node could re-send or mis-send tokens. Plus the collections
+         catalog, pending-coin map and the shared minima_api_prefs pairing token -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"

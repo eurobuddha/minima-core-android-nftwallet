@@ -19,32 +19,40 @@ public class DefBudgetTest {
      * landed in the record AFTER tokencreate — 18.4K, past the split bound. */
 
     @Test public void lightCollectionSignsAndPasses() {
-        assertEquals("sign", StateNft.jointGate(3000, 5500));
+        assertEquals("sign", StateNft.jointGate(3000, 5500));   // 5.5K image in the 7.6K room
     }
 
-    @Test public void mathWeightRecordMintsUnsignedInstead() {
-        // meta 9554 signed would be 18.5K > split max; unsigned 10.1K fits
-        assertEquals("nosign", StateNft.jointGate(9554, 5500));
+    /* ALWAYS SIGNED: the nosign branch is deleted project-wide. Anything
+     * that cannot carry the signature is REFUSED with the reason. */
+    @Test public void mathWeightRecordIsRefusedNeverUnsigned() {
+        String g = StateNft.jointGate(9554, 5500);
+        assertNotEquals("sign", g);
+        assertNotEquals("nosign", g);
     }
 
     @Test public void overJointPairIsRefused() {
-        String g = StateNft.jointGate(11500, 14000);
+        String g = StateNft.jointGate(3000, 7700);
         assertNotEquals("sign", g);
-        assertNotEquals("nosign", g);
-        assertTrue(g.contains("transfer budget"));
+        assertTrue(g.contains("image budget"));
     }
 
     @Test public void unsplittableRecordIsRefusedOutright() {
         String g = StateNft.jointGate(18000, 0);
         assertNotEquals("sign", g);
-        assertNotEquals("nosign", g);
+    }
+
+    @Test public void envelopeMath() {
+        assertEquals(8367, StateNft.META_MAX);
+        assertEquals(19500 - 533 - 8400 - 3000, StateNft.imageBudget(3000));
+        assertEquals(-1, StateNft.imageBudget(9000));
     }
 
     @Test public void exactDefLenUsesTheRealMetadata() {
         StateNft.Meta m = new StateNft.Meta();
         m.name = "X";
         m.mode = "embed";
-        assertEquals(StateNft.tokenMetadata(m).toString().length() + StateNft.DEF_WRAPPER,
+        assertEquals(StateNft.tokenMetadata(m).toString().length()
+                + StateNft.DEF_WRAPPER + StateNft.DEF_SIGN_WEIGHT,
                 StateNft.defActualLen(m));
     }
 

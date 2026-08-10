@@ -1,8 +1,8 @@
 {
   "app/build.gradle": {
-    "mtime": 1786369625.0909226,
-    "ast_hash": "1224e0a4c5adb20e765d5cd564ae9d23",
-    "semantic_hash": ""
+    "mtime": 1786312519.4285545,
+    "ast_hash": "6ce8ae42e19a4f6158ba02127092ba6c",
+    "semantic_hash": "6ce8ae42e19a4f6158ba02127092ba6c"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/BalancesView.java": {
     "mtime": 1786230655.2047586,
@@ -130,9 +130,9 @@
     "semantic_hash": "d10f5c400040c70b4a52a0e1fe33c91c"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/ReceiveView.java": {
-    "mtime": 1786369569.6531618,
-    "ast_hash": "00c4caac5fe45bea252b467d660bf7e5",
-    "semantic_hash": ""
+    "mtime": 1785938274.2750175,
+    "ast_hash": "e074a7afa0c60973c96dbd9b6ff0d97b",
+    "semantic_hash": "e074a7afa0c60973c96dbd9b6ff0d97b"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/SendView.java": {
     "mtime": 1785949797.5216012,

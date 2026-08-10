@@ -353,6 +353,14 @@ public class MintView extends BaseView {
         if (!burn.isEmpty() && positive(burn)) cmd.append(" burn:").append(burn);
         if (!webv.isEmpty()) cmd.append(" webvalidate:").append(webv);
 
+        // ALWAYS SIGNED: gate the record with the signature aboard
+        if (json.toString().length() > StateNft.META_MAX) {
+            status(tStatus, "Record " + (json.toString().length() + StateNft.DEF_WRAPPER
+                    + StateNft.DEF_SIGN_WEIGHT) + "B signed is past the split bound — "
+                    + "smaller icon or shorter fields.", false);
+            return;
+        }
+
         // Confirmation card, old-wallet style
         LinearLayout body = confirmBody();
         addConfirmRow(body, "Name", name);
@@ -364,7 +372,18 @@ public class MintView extends BaseView {
         addConfirmRow(body, "Web validation", webv.isEmpty() ? "Not set" : webv);
         for (String[] kv : meta) addConfirmRow(body, kv[0], kv[1]);
         if (!burn.isEmpty() && positive(burn)) addConfirmRow(body, "Burn", burn + " MINIMA");
-        showConfirm("Mint this token?", body, "Mint →", () -> runMint(cmd.toString(), tStatus, "Token"));
+        showConfirm("Mint this token?", body, "Mint →", () -> {
+            // ALWAYS SIGNED — no key, no mint
+            act.node().cmd("getaddress", new NodeApi.Cb() {
+                @Override public void onResult(JSONObject gres) {
+                    JSONObject r = gres.optJSONObject("response");
+                    String pk = r == null ? "" : r.optString("publickey", "");
+                    if (pk.isEmpty()) { status(tStatus, "Could not fetch the signing key — node offline?", false); return; }
+                    runMint(cmd.toString() + " signtoken:" + pk, tStatus, "Token");
+                }
+                @Override public void onError(String message) { status(tStatus, "Could not fetch the signing key: " + message, false); }
+            });
+        });
     }
 
     // ===================== NFT FORM =====================
@@ -425,10 +444,11 @@ public class MintView extends BaseView {
         nBurn = addField(nftForm, "Burn (optional)", "0.0", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
 
         nSign = new CheckBox(act);
-        nSign.setText("Sign as creator (signtoken — proves this wallet minted it)");
+        nSign.setText("Signed as creator — always (the signature is your provenance)");
         nSign.setTextColor(Design.dim());
         nSign.setTextSize(12f);
         nSign.setChecked(true);
+        nSign.setEnabled(false);   // ALWAYS SIGNED: not a choice any more
         nftForm.addView(nSign);
 
         nftForm.addView(primaryButton("Review & mint NFT", v -> onReviewNft()));
@@ -573,37 +593,39 @@ public class MintView extends BaseView {
         addConfirmRow(body, "Creator", creator.isEmpty() ? "Not set" : creator);
         addConfirmRow(body, "External URL", extUrl.isEmpty() ? "None set" : extUrl);
         addConfirmRow(body, "Web validation", webv.isEmpty() ? "None set" : webv);
-        addConfirmRow(body, "Creator signature", nSign.isChecked() ? "yes (signtoken)" : "no");
+        addConfirmRow(body, "Creator signature", "yes — always (signtoken)");
         if (!burn.isEmpty() && positive(burn)) addConfirmRow(body, "Burn", burn + " MINIMA");
 
         // Multi-edition NFTs split like any token, and every split output carries the
         // full record — a signed 9K artimage record passes the eye but seals past the
         // split bound. Exact check; the fix is theirs to choose.
-        if (editions > 1 && nSign.isChecked()) {
+        {
+            // ALWAYS SIGNED: the record with the 8.4KB signature must split
+            // (editions>1) and send. Refuse with the numbers; the fix is a
+            // smaller image or fewer editions — never an unsigned mint.
             int metaLen = json.toString().length();
-            if (metaLen + StateNft.DEF_WRAPPER + StateNft.DEF_SIGN_WEIGHT > StateNft.DEF_SPLIT_MAX) {
-                status(nStatus, "Signed, this record would be " + (metaLen + StateNft.DEF_WRAPPER
-                        + StateNft.DEF_SIGN_WEIGHT) + "B — past the " + StateNft.DEF_SPLIT_MAX
-                        + "B split bound, so " + editions + " editions could never separate. "
-                        + "Untick the creator signature or use a smaller image.", false);
+            int bound = editions > 1 ? StateNft.META_MAX
+                    : (StateNft.TRANSFER_PAIR_BUDGET - StateNft.DEF_WRAPPER - StateNft.DEF_SIGN_WEIGHT);
+            if (metaLen > bound) {
+                status(nStatus, "Signed, this record is " + (metaLen + StateNft.DEF_WRAPPER
+                        + StateNft.DEF_SIGN_WEIGHT) + "B — past the limit for "
+                        + (editions > 1 ? editions + " editions (must split)" : "a sendable record")
+                        + ". Use a smaller image or shorter text.", false);
                 return;
             }
         }
         showConfirm("Mint this NFT?", body, "Mint NFT →", () -> {
-            if (nSign.isChecked()) {
-                // fetch a wallet public key to sign the token as its creator
-                act.node().cmd("getaddress", new NodeApi.Cb() {
-                    @Override public void onResult(JSONObject json) {
-                        JSONObject r = json.optJSONObject("response");
-                        String pk = r == null ? "" : r.optString("publickey", "");
-                        if (!pk.isEmpty()) cmd.append(" signtoken:").append(pk);
-                        runMint(cmd.toString(), nStatus, "NFT");
-                    }
-                    @Override public void onError(String message) { runMint(cmd.toString(), nStatus, "NFT"); }
-                });
-            } else {
-                runMint(cmd.toString(), nStatus, "NFT");
-            }
+            // ALWAYS SIGNED — no key, no mint
+            act.node().cmd("getaddress", new NodeApi.Cb() {
+                @Override public void onResult(JSONObject json) {
+                    JSONObject r = json.optJSONObject("response");
+                    String pk = r == null ? "" : r.optString("publickey", "");
+                    if (pk.isEmpty()) { status(nStatus, "Could not fetch the signing key — node offline?", false); return; }
+                    cmd.append(" signtoken:").append(pk);
+                    runMint(cmd.toString(), nStatus, "NFT");
+                }
+                @Override public void onError(String message) { status(nStatus, "Could not fetch the signing key: " + message, false); }
+            });
         });
     }
 
@@ -1069,18 +1091,23 @@ public class MintView extends BaseView {
         {
             int maxImg = 0;
             for (String img : colImages.values()) maxImg = Math.max(maxImg, img.length());
+            // ALWAYS SIGNED: fit the icon into the envelope — slim, then drop,
+            // then refuse with the numbers. Never an unsigned mint.
             String g = StateNft.jointGate(colDefMetaLen(name, desc, extUrl, iconGuarded), maxImg);
-            if (!"sign".equals(g) && !"nosign".equals(g) && colIconEmbed && !iconGuarded.isEmpty()) {
-                String slim = ImageTools.recompressBase64(iconGuarded, 4000);
-                if (!slim.isEmpty()) {
-                    g = StateNft.jointGate(colDefMetaLen(name, desc, extUrl, slim), maxImg);
-                    if ("sign".equals(g) || "nosign".equals(g)) {
-                        iconGuarded = slim;
-                        iconDescGuarded = "embedded (slimmed to keep the token splittable)";
-                    }
+            if (!"sign".equals(g) && colIconEmbed && !iconGuarded.isEmpty()) {
+                String slim = ImageTools.recompressBase64(iconGuarded, 2000);
+                if (!slim.isEmpty()
+                        && "sign".equals(StateNft.jointGate(colDefMetaLen(name, desc, extUrl, slim), maxImg))) {
+                    iconGuarded = slim;
+                    iconDescGuarded = "embedded (slimmed so every item signs and travels)";
+                    g = "sign";
+                } else if ("sign".equals(StateNft.jointGate(colDefMetaLen(name, desc, extUrl, ""), maxImg))) {
+                    iconGuarded = "";
+                    iconDescGuarded = "none — dropped so every item signs (wallet shows the identicon)";
+                    g = "sign";
                 }
             }
-            if (!"sign".equals(g) && !"nosign".equals(g)) { status(cStatus, g, false); return; }
+            if (!"sign".equals(g)) { status(cStatus, g, false); return; }
         }
         final String iconF = iconGuarded;
         final String iconDescF = iconDescGuarded;

@@ -138,28 +138,41 @@ public final class StateNft {
      * metadata alone. Atelier's 'Math' passed every estimator at ~10K and
      * sealed at 18.4K, past the split bound, untransferable forever. These
      * are the exact bounds, measured on-chain. */
-    public static final int TRANSFER_PAIR_BUDGET = 23000;  // record + largest image
+    public static final int TRANSFER_PAIR_BUDGET = 19500;  // 20000 combined CONFIRMED on-chain 2026-08-10 (21000 failed) − 500 margin
     public static final int DEF_WRAPPER = 533;             // fullDef - len(metaJSON)
     public static final int DEF_SPLIT_MAX = 17300;         // 3 records + sig under 64KB
     public static final int DEF_SIGN_WEIGHT = 8400;        // signtype+signedby+signature
 
     /** Exact record length this Meta would seal (metadata JSON + wrapper). */
     public static int defActualLen(Meta m) {
-        return tokenMetadata(m).toString().length() + DEF_WRAPPER;
+        return tokenMetadata(m).toString().length() + DEF_WRAPPER + DEF_SIGN_WEIGHT;  // ALWAYS signed
     }
 
-    /** The gate: "sign" when the TRUE signed weights fit, "nosign" when
-     *  dropping the redundant signature saves transferability (the locked
-     *  script's SIGNEDBY still proves the creator), else a refusal message
-     *  with the real numbers. */
+    /** metaLen ceiling with the signature ALWAYS aboard. */
+    public static final int META_MAX = DEF_SPLIT_MAX - DEF_WRAPPER - DEF_SIGN_WEIGHT;  // 8367
+
+    /** ALWAYS SIGNED: image room the signed record leaves, or -1 when the
+     *  record alone cannot split. */
+    public static int imageBudget(int metaLen) {
+        if (metaLen > META_MAX) return -1;
+        return TRANSFER_PAIR_BUDGET - DEF_WRAPPER - DEF_SIGN_WEIGHT - metaLen;
+    }
+
+    /** Sign-or-error. The nosign branch is DELETED project-wide — never
+     *  reintroduce it: unsigned mints silently trade the creator's
+     *  provenance away. */
     public static String jointGate(int metaLen, int maxImg) {
-        int unsigned = metaLen + DEF_WRAPPER;
-        int signed = unsigned + DEF_SIGN_WEIGHT;
-        if (signed <= DEF_SPLIT_MAX && signed + maxImg <= TRANSFER_PAIR_BUDGET) return "sign";
-        if (unsigned <= DEF_SPLIT_MAX && unsigned + maxImg <= TRANSFER_PAIR_BUDGET) return "nosign";
-        return "definition " + unsigned + "B + largest image " + maxImg
-             + "B breaks the transfer budget (" + TRANSFER_PAIR_BUDGET
-             + "B) — hosted icon, shorter text or smaller images";
+        int room = imageBudget(metaLen);
+        if (room < 0) {
+            return "record " + (metaLen + DEF_WRAPPER + DEF_SIGN_WEIGHT)
+                 + "B signed cannot split under the 64KB cap (metadata " + metaLen
+                 + "B > " + META_MAX + "B) — shorter text or a hosted icon";
+        }
+        if (maxImg > room) {
+            return "largest image " + maxImg + "B exceeds the " + room
+                 + "B image budget the signed record leaves — smaller images or a lighter record";
+        }
+        return "sign";
     }
 
     public static JSONObject tokenMetadata(Meta m) {

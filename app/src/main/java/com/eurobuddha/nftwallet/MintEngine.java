@@ -136,7 +136,7 @@ public final class MintEngine {
         // even unsigned cannot travel. Nothing doomed reaches the chain.
         String gate = StateNft.jointGate(StateNft.tokenMetadata(m).toString().length(),
                 maxImageLen(row));
-        if (!"sign".equals(gate) && !"nosign".equals(gate)) {
+        if (!"sign".equals(gate)) {
             setError(ctx, row, gate, done);
             return;
         }
@@ -145,7 +145,7 @@ public final class MintEngine {
                 + " decimals:0"
                 + " script:\"" + StateNft.script(row.optString("creatorpk"), row.optString("mode")) + "\""
                 + " state:{\"0\":\"0\"}";
-        if ("sign".equals(gate)) cmd += " signtoken:" + row.optString("creatorpk");
+        cmd += " signtoken:" + row.optString("creatorpk");   // ALWAYS signed — gate guaranteed fit
         if (!row.optString("webvalidate").isEmpty()) cmd += " webvalidate:" + row.optString("webvalidate");
         cmd(node, cmd, new Cb() {
             @Override public void ok(JSONObject res) {

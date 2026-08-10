@@ -1,13 +1,13 @@
 {
   "app/build.gradle": {
-    "mtime": 1785937468.0198247,
-    "ast_hash": "34a77a41027432902434e821f2d4684d",
-    "semantic_hash": "34a77a41027432902434e821f2d4684d"
+    "mtime": 1786312519.4285545,
+    "ast_hash": "6ce8ae42e19a4f6158ba02127092ba6c",
+    "semantic_hash": "6ce8ae42e19a4f6158ba02127092ba6c"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/BalancesView.java": {
-    "mtime": 1785941486.0622513,
-    "ast_hash": "64de874c5fee44d68f322dfb03056c60",
-    "semantic_hash": ""
+    "mtime": 1786230655.2047586,
+    "ast_hash": "d794ede2f3042c0ef742d44f0acdd178",
+    "semantic_hash": "d794ede2f3042c0ef742d44f0acdd178"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/BaseView.java": {
     "mtime": 1785937223.7642598,
@@ -17,17 +17,17 @@
   "app/src/main/java/com/eurobuddha/nftwallet/CmdChain.java": {
     "mtime": 1785940786.598065,
     "ast_hash": "727389c0d91da1d65018bbe12570bc8f",
-    "semantic_hash": ""
+    "semantic_hash": "727389c0d91da1d65018bbe12570bc8f"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/Coin.java": {
     "mtime": 1785941464.8674912,
     "ast_hash": "628bd27a0375dd0304c2ec0a2ee81e29",
-    "semantic_hash": ""
+    "semantic_hash": "628bd27a0375dd0304c2ec0a2ee81e29"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/CoinDetailDialog.java": {
-    "mtime": 1785940663.5234537,
-    "ast_hash": "75506de9760a7da1af1dfbd6c3c744bc",
-    "semantic_hash": ""
+    "mtime": 1785949617.2020054,
+    "ast_hash": "9014189ef15851ad796fc5d313e77ebc",
+    "semantic_hash": "9014189ef15851ad796fc5d313e77ebc"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/Design.java": {
     "mtime": 1785937538.1238785,
@@ -45,9 +45,9 @@
     "semantic_hash": "6e2a323bb772f8d850b4948e08891623"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/GalleryView.java": {
-    "mtime": 1785940663.5229719,
-    "ast_hash": "b7db2c17720d640ba21825a5bc128c0a",
-    "semantic_hash": ""
+    "mtime": 1786289206.981517,
+    "ast_hash": "916090613c4b54889b76238c158f1849",
+    "semantic_hash": "916090613c4b54889b76238c158f1849"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/HiddenTokens.java": {
     "mtime": 1785939502.5785124,
@@ -65,14 +65,14 @@
     "semantic_hash": "06c6e47e1e5b980a3a6dae1e22c10f58"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/HistoryView.java": {
-    "mtime": 1785940323.6620524,
-    "ast_hash": "d49d018d82608b665101d51949fcd360",
-    "semantic_hash": ""
+    "mtime": 1785954793.957871,
+    "ast_hash": "b3ac1e331f31af84bb218ad6535cee02",
+    "semantic_hash": "b3ac1e331f31af84bb218ad6535cee02"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/IconResolver.java": {
-    "mtime": 1785937223.7665863,
-    "ast_hash": "6e55edec734419a49df1f22b0f6127bd",
-    "semantic_hash": "6e55edec734419a49df1f22b0f6127bd"
+    "mtime": 1786005667.6161623,
+    "ast_hash": "524ae54a91723e17f9337286f0553cdc",
+    "semantic_hash": "524ae54a91723e17f9337286f0553cdc"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/Identicon.java": {
     "mtime": 1785937223.7648015,
@@ -85,9 +85,9 @@
     "semantic_hash": "23556b7c719034ae35c1f45ca8cede85"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/ImageTools.java": {
-    "mtime": 1785937436.4997952,
-    "ast_hash": "279f56928f23fa9118a67209c4736587",
-    "semantic_hash": "279f56928f23fa9118a67209c4736587"
+    "mtime": 1786005623.866381,
+    "ast_hash": "eb9346ad940a22c613e0603f314c110b",
+    "semantic_hash": "eb9346ad940a22c613e0603f314c110b"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/LocalStore.java": {
     "mtime": 1785937695.9935844,
@@ -95,9 +95,9 @@
     "semantic_hash": "01b077804824d328ce531bd1910d3bb8"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/MainActivity.java": {
-    "mtime": 1785942111.6227837,
-    "ast_hash": "abc1ab604caf0d4c796d0d8a3fb168ab",
-    "semantic_hash": ""
+    "mtime": 1786289234.2550373,
+    "ast_hash": "3574c2847e3d8e3220485c9ad9987f09",
+    "semantic_hash": "3574c2847e3d8e3220485c9ad9987f09"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/MainPager.java": {
     "mtime": 1785937223.768747,
@@ -105,14 +105,14 @@
     "semantic_hash": "f00a9d751627a0c3b26537be2d90c114"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/MintEngine.java": {
-    "mtime": 1785942111.6248333,
-    "ast_hash": "be305648c6da16fa550d464c8d5ff2df",
-    "semantic_hash": ""
+    "mtime": 1786312437.1087651,
+    "ast_hash": "a69e77213b0fed0c828f16744932f070",
+    "semantic_hash": "a69e77213b0fed0c828f16744932f070"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/MintView.java": {
-    "mtime": 1785940689.7079766,
-    "ast_hash": "66b3c8895f53df91e9743df18a99ec55",
-    "semantic_hash": ""
+    "mtime": 1786312466.5849,
+    "ast_hash": "651532cd2e6139eac29fb89c0a2acf88",
+    "semantic_hash": "651532cd2e6139eac29fb89c0a2acf88"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/NodeApi.java": {
     "mtime": 1785937257.9977899,
@@ -135,29 +135,29 @@
     "semantic_hash": "e074a7afa0c60973c96dbd9b6ff0d97b"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/SendView.java": {
-    "mtime": 1785942111.623538,
-    "ast_hash": "44469156bb3fe8455234b60f55edc613",
-    "semantic_hash": ""
+    "mtime": 1785949797.5216012,
+    "ast_hash": "d2cc16e5b82149fc51ad5d041bded566",
+    "semantic_hash": "d2cc16e5b82149fc51ad5d041bded566"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/SettingsDialog.java": {
-    "mtime": 1785940323.6615438,
-    "ast_hash": "e6ad507fa332f08efacace1768b484ea",
-    "semantic_hash": ""
+    "mtime": 1785949654.2213483,
+    "ast_hash": "75688f4c0a7bfe5a23dfed42638599a9",
+    "semantic_hash": "75688f4c0a7bfe5a23dfed42638599a9"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/StateNft.java": {
-    "mtime": 1785941464.86921,
-    "ast_hash": "cdd857ad682296695a25c2ea60e7175e",
-    "semantic_hash": ""
+    "mtime": 1786312437.108025,
+    "ast_hash": "e52ea500b2a4ab979515b7718308eb65",
+    "semantic_hash": "e52ea500b2a4ab979515b7718308eb65"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/StateNftActions.java": {
-    "mtime": 1785940689.7061634,
-    "ast_hash": "fbcedb76a764e76acf40172f9c796ba9",
-    "semantic_hash": ""
+    "mtime": 1786230679.7882926,
+    "ast_hash": "c5c168326684914780a9ec2498b0c74f",
+    "semantic_hash": "c5c168326684914780a9ec2498b0c74f"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/TokenBalance.java": {
     "mtime": 1785942111.6217194,
     "ast_hash": "c251edc092b1b1587ac9ea49203c87b1",
-    "semantic_hash": ""
+    "semantic_hash": "c251edc092b1b1587ac9ea49203c87b1"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/TokenMeta.java": {
     "mtime": 1785937874.5657365,
@@ -175,14 +175,14 @@
     "semantic_hash": "d4bf340477efe77ebb2fdfe7627df2f6"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/Util.java": {
-    "mtime": 1785941464.8669822,
-    "ast_hash": "fc45431f4d4e84d5a4caedab123ddd20",
-    "semantic_hash": ""
+    "mtime": 1785949716.2836018,
+    "ast_hash": "5589b8df255197ff5e4477d3abaf2e36",
+    "semantic_hash": "5589b8df255197ff5e4477d3abaf2e36"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/WalletTools.java": {
-    "mtime": 1785941503.7850127,
-    "ast_hash": "4ad8fc3ccdf5cabb8291b98772123a96",
-    "semantic_hash": ""
+    "mtime": 1785949852.0853407,
+    "ast_hash": "6c22c9a01852aab928a9487573893258",
+    "semantic_hash": "6c22c9a01852aab928a9487573893258"
   },
   "app/src/main/java/com/eurobuddha/nftwallet/WalletView.java": {
     "mtime": 1785938315.4819589,
@@ -195,9 +195,9 @@
     "semantic_hash": "bb3c2dce9027583f2d56b7a497d672e4"
   },
   "app/src/test/java/com/eurobuddha/nftwallet/StateNftTest.java": {
-    "mtime": 1785937436.5005007,
-    "ast_hash": "56f68ac60e661f01ee381d9efaa92946",
-    "semantic_hash": "56f68ac60e661f01ee381d9efaa92946"
+    "mtime": 1785947433.3732073,
+    "ast_hash": "a27a9394bfa08bbfd869f42c1c3c1f86",
+    "semantic_hash": "a27a9394bfa08bbfd869f42c1c3c1f86"
   },
   "build.gradle": {
     "mtime": 1782212552.0,
@@ -217,61 +217,111 @@
   "app/src/test/java/com/eurobuddha/nftwallet/WalletGuardsTest.java": {
     "mtime": 1785942133.7312205,
     "ast_hash": "1bf055e12b79e24fd51d3f49e406206d",
-    "semantic_hash": ""
+    "semantic_hash": "1bf055e12b79e24fd51d3f49e406206d"
   },
   "CLAUDE.md": {
     "mtime": 1784124679.0,
     "ast_hash": "4439d09bc81851d89f9ffcecc4136dcf",
-    "semantic_hash": ""
+    "semantic_hash": "4439d09bc81851d89f9ffcecc4136dcf"
   },
   "DESIGN_MAP.md": {
     "mtime": 1782292073.0,
     "ast_hash": "14fc5f67a96dbc38bf2129353764c4a2",
-    "semantic_hash": ""
+    "semantic_hash": "14fc5f67a96dbc38bf2129353764c4a2"
   },
   "README.md": {
     "mtime": 1785939621.6002269,
     "ast_hash": "9770d9e7c416e090646147bed61a858c",
-    "semantic_hash": ""
+    "semantic_hash": "9770d9e7c416e090646147bed61a858c"
   },
   "app/src/main/res/drawable-nodpi/minima_coin.png": {
     "mtime": 1782910364.0,
     "ast_hash": "b42a00a97985ae43dc75340e887b85c2",
-    "semantic_hash": ""
+    "semantic_hash": "b42a00a97985ae43dc75340e887b85c2"
   },
   "app/src/main/res/drawable-nodpi/minima_logo.png": {
     "mtime": 1782891719.0,
     "ast_hash": "6976cdf6379c575ff396965d8c79bae4",
-    "semantic_hash": ""
-  },
-  "app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png": {
-    "mtime": 1782864434.0,
-    "ast_hash": "2c9737d4f912a1f8476a4e408ed8df68",
-    "semantic_hash": ""
-  },
-  "app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png": {
-    "mtime": 1782864434.0,
-    "ast_hash": "178b630bb3b6c6e0ea2ffc4b38648a79",
-    "semantic_hash": ""
-  },
-  "app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png": {
-    "mtime": 1782864434.0,
-    "ast_hash": "d75267b0727bf4ccd4133e1646faf96e",
-    "semantic_hash": ""
-  },
-  "app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png": {
-    "mtime": 1782864434.0,
-    "ast_hash": "84b6fd2f44142db9739322b1e45987ef",
-    "semantic_hash": ""
-  },
-  "app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png": {
-    "mtime": 1782864434.0,
-    "ast_hash": "171bc4320ad34791f91054d5b2835cb7",
-    "semantic_hash": ""
+    "semantic_hash": "6976cdf6379c575ff396965d8c79bae4"
   },
   "app/src/main/res/raw/minima_icon.svg": {
     "mtime": 1782899815.0,
     "ast_hash": "df87d6ade37210e92ec34cf658a62940",
-    "semantic_hash": ""
+    "semantic_hash": "df87d6ade37210e92ec34cf658a62940"
+  },
+  "app/src/main/java/com/eurobuddha/nftwallet/BootReceiver.java": {
+    "mtime": 1786021633.8628702,
+    "ast_hash": "816afe311e1b712bea6471513b33b91d",
+    "semantic_hash": "816afe311e1b712bea6471513b33b91d"
+  },
+  "app/src/main/java/com/eurobuddha/nftwallet/Format.java": {
+    "mtime": 1785949312.938964,
+    "ast_hash": "75b50f6d3b8261c66a05d0d5a7bc5d8c",
+    "semantic_hash": "75b50f6d3b8261c66a05d0d5a7bc5d8c"
+  },
+  "app/src/main/java/com/eurobuddha/nftwallet/HeartbeatReceiver.java": {
+    "mtime": 1786230566.3754938,
+    "ast_hash": "a6142f8e8fb60ea5d08a43893abffd79",
+    "semantic_hash": "a6142f8e8fb60ea5d08a43893abffd79"
+  },
+  "app/src/main/java/com/eurobuddha/nftwallet/MintDriver.java": {
+    "mtime": 1786230531.1695855,
+    "ast_hash": "6809a01b2b8aeff91b1055c1f60e3089",
+    "semantic_hash": "6809a01b2b8aeff91b1055c1f60e3089"
+  },
+  "app/src/main/java/com/eurobuddha/nftwallet/MintService.java": {
+    "mtime": 1786230704.3551128,
+    "ast_hash": "06a157cb4b82abbebd73b809d188a235",
+    "semantic_hash": "06a157cb4b82abbebd73b809d188a235"
+  },
+  "app/src/main/java/com/eurobuddha/nftwallet/MintWorker.java": {
+    "mtime": 1786230601.9960368,
+    "ast_hash": "7e2fcdc59250aec34fef1cbf489547d2",
+    "semantic_hash": "7e2fcdc59250aec34fef1cbf489547d2"
+  },
+  "app/src/main/java/com/eurobuddha/nftwallet/Notifier.java": {
+    "mtime": 1786230704.3572042,
+    "ast_hash": "8c9004f6fa76ca4f27a42f44d2c0fc94",
+    "semantic_hash": "8c9004f6fa76ca4f27a42f44d2c0fc94"
+  },
+  "app/src/main/java/com/eurobuddha/nftwallet/Sheet.java": {
+    "mtime": 1785949716.282319,
+    "ast_hash": "6aa8b7bb28b1d06876d550a3bcf877b8",
+    "semantic_hash": "6aa8b7bb28b1d06876d550a3bcf877b8"
+  },
+  "app/src/main/java/com/eurobuddha/nftwallet/SvgSanitizer.java": {
+    "mtime": 1786005581.281635,
+    "ast_hash": "618fe92a6b65399369ef9ed199de70aa",
+    "semantic_hash": "618fe92a6b65399369ef9ed199de70aa"
+  },
+  "app/src/test/java/com/eurobuddha/nftwallet/BuriedCoinTest.java": {
+    "mtime": 1786230766.9381335,
+    "ast_hash": "9832d1cd457dc1650aa99325af7a01e4",
+    "semantic_hash": "9832d1cd457dc1650aa99325af7a01e4"
+  },
+  "app/src/test/java/com/eurobuddha/nftwallet/DefBudgetTest.java": {
+    "mtime": 1786312490.9177709,
+    "ast_hash": "b62c8aeeb8cbd8c96896e145e0532ef5",
+    "semantic_hash": "b62c8aeeb8cbd8c96896e145e0532ef5"
+  },
+  "app/src/test/java/com/eurobuddha/nftwallet/FillOrderTest.java": {
+    "mtime": 1785943142.7436886,
+    "ast_hash": "2c95a32de8fff2151cbf105d82b3d685",
+    "semantic_hash": "2c95a32de8fff2151cbf105d82b3d685"
+  },
+  "app/src/test/java/com/eurobuddha/nftwallet/FormatTest.java": {
+    "mtime": 1785949312.8910635,
+    "ast_hash": "5c34b7e50a7632bebcb3c510458644f4",
+    "semantic_hash": "5c34b7e50a7632bebcb3c510458644f4"
+  },
+  "app/src/test/java/com/eurobuddha/nftwallet/IconBudgetTest.java": {
+    "mtime": 1786022081.7705965,
+    "ast_hash": "e3764fa567bad1d51885975d5758a2fa",
+    "semantic_hash": "e3764fa567bad1d51885975d5758a2fa"
+  },
+  "app/src/test/java/com/eurobuddha/nftwallet/ImageFormatTest.java": {
+    "mtime": 1786005701.2784252,
+    "ast_hash": "754e49a116a89fc29373c18afee1e763",
+    "semantic_hash": "754e49a116a89fc29373c18afee1e763"
   }
 }

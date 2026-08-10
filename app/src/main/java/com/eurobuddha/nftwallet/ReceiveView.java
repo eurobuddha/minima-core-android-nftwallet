@@ -146,10 +146,23 @@ public class ReceiveView extends BaseView {
             r.setLayoutParams(lp);
 
             TextView t = new TextView(act);
-            t.setText(Util.shorten(mini));
+            // The FULL address, never shortened. Util.shorten cut this to 8+…+6 = 15 characters,
+            // which is not enough to tell two of your own addresses apart, let alone verify one
+            // against a counterparty. There is room for the whole thing, and where there isn't it
+            // wraps rather than hiding characters.
+            t.setText(mini);
             t.setTextColor(active ? Design.accent() : Design.text());
-            t.setTextSize(12f);
+            t.setTextSize(11f);
             t.setTypeface(android.graphics.Typeface.MONOSPACE);
+            t.setEllipsize(null);
+            t.setSingleLine(false);
+            t.setMaxLines(3);
+            if (android.os.Build.VERSION.SDK_INT >= 23) {
+                // An address is one unbroken token; the default strategies try to keep it whole and
+                // then clip. SIMPLE + no hyphenation wraps it at a character boundary instead.
+                t.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE);
+                t.setHyphenationFrequency(android.text.Layout.HYPHENATION_FREQUENCY_NONE);
+            }
             r.addView(t, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
             if (active) {
@@ -161,6 +174,17 @@ public class ReceiveView extends BaseView {
                 r.addView(chip);
             }
             r.setOnClickListener(v -> { showAddress(mini); renderList(); });
+            // Tap swaps the QR, so copying needs its own gesture. Copies the Mx form — the one you
+            // hand to someone else.
+            r.setOnLongClickListener(v -> {
+                android.content.ClipboardManager cm = (android.content.ClipboardManager)
+                        act.getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                if (cm != null) {
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("Minima address", mini));
+                    Toast.makeText(act, "Address copied", Toast.LENGTH_SHORT).show();
+                }
+                return true;
+            });
             list.addView(r);
         }
     }

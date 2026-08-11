@@ -142,8 +142,10 @@ public final class ImageTools {
         }
     }
 
-    private static final int[] DIMS = {1080, 900, 720, 560, 420, 300};
-    private static final int[] QUALITIES = {88, 78, 68, 60};
+    /* The ladder MUST reach the floor: a 300px/q60 stop refused budgets a
+     * smaller rung fits easily (Atelier, 2026-08-10/11). Raster always fits. */
+    private static final int[] DIMS = {1080, 900, 720, 560, 420, 300, 240, 180, 140};
+    private static final int[] QUALITIES = {88, 78, 68, 60, 50, 42};
 
     private static String compressBitmap(Bitmap src, int budget) {
         for (int dim : DIMS) {
@@ -156,6 +158,16 @@ public final class ImageTools {
                 if (!b64.isEmpty() && b64.length() <= budget) return b64;
             }
             if (scaled != src) scaled.recycle();
+        }
+        // last resort: halve dimensions at floor quality until it fits —
+        // every fixed slim target in the app relies on this never failing
+        for (int dim = 100; dim >= 16; dim /= 2) {
+            float scale = Math.min(1f, dim / (float) Math.max(src.getWidth(), src.getHeight()));
+            Bitmap scaled = Bitmap.createScaledBitmap(src,
+                    Math.max(1, Math.round(src.getWidth() * scale)),
+                    Math.max(1, Math.round(src.getHeight() * scale)), true);
+            String b64 = encode(scaled, 40);
+            if (!b64.isEmpty() && b64.length() <= budget) return b64;
         }
         return "";
     }

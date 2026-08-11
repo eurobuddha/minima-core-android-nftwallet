@@ -1,16 +1,16 @@
-# Graph Report - NFTwallet  (2026-08-11)
+# Graph Report - NFTwallet  (2026-08-10)
 
 ## Corpus Check
-- 62 files · ~61,394 words
+- 62 files · ~61,292 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 532 nodes · 1046 edges · 144 communities (16 shown, 128 thin omitted)
+- 527 nodes · 1031 edges · 141 communities (15 shown, 126 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 21 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a48c8b9c`
+- Built from commit: `4cf56acc`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -26,7 +26,7 @@
 - ReceiveView
 - Format
 - .updateTabArrows
-- ImageTools
+- .compressBitmap
 - ImageFormatTest
 - NodeApi
 - Context
@@ -99,7 +99,6 @@
 - TextView
 - View
 - Test
-- Bitmap
 - Context
 - Handler
 - JSONObject
@@ -116,9 +115,7 @@
 - TextView
 - View
 - TextView
-- Context
 - Pattern
-- Uri
 - Cb
 - JSONObject
 - JSONObject
@@ -166,7 +163,7 @@
 7. `ReceiveView` - 16 edges
 8. `MintDriver` - 15 edges
 9. `Done` - 14 edges
-10. `ImageTools` - 11 edges
+10. `Meta` - 11 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `MintView` --references--> `Screen`  [EXTRACTED]
@@ -177,7 +174,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (144 total, 128 thin omitted)
+## Communities (141 total, 126 thin omitted)
 
 ### Community 0 - "MintEngine"
 Cohesion: 0.19
@@ -192,8 +189,8 @@ Cohesion: 0.38
 Nodes (3): BuriedCoinTest, Test, Coin
 
 ### Community 5 - "MintView"
-Cohesion: 0.12
-Nodes (11): JSONObject, MintView, Button, CheckBox, EditText, ImageView, LinearLayout, OnClickListener (+3 more)
+Cohesion: 0.11
+Nodes (12): JSONObject, MintView, Button, CheckBox, EditText, ImageView, LinearLayout, OnClickListener (+4 more)
 
 ### Community 7 - "StateNft"
 Cohesion: 0.11
@@ -211,13 +208,9 @@ Nodes (4): ReceiveView, BaseView, MainActivity, Override
 Cohesion: 0.18
 Nodes (4): Format, Context, FormatTest, Test
 
-### Community 12 - "ImageTools"
-Cohesion: 0.23
-Nodes (4): ImageTools, Bitmap, SuppressWarnings, Uri
-
 ### Community 13 - "ImageFormatTest"
-Cohesion: 0.21
-Nodes (4): Pattern, SvgSanitizer, ImageFormatTest, Test
+Cohesion: 0.17
+Nodes (6): Context, Uri, Pattern, SvgSanitizer, ImageFormatTest, Test
 
 ### Community 18 - ".onReceive"
 Cohesion: 0.16
@@ -230,22 +223,22 @@ Nodes (6): Screen, COLLECTION, HUB, NFT, PROGRESS, TOKEN
 ## Knowledge Gaps
 - **13 isolated node(s):** `HUB`, `TOKEN`, `NFT`, `COLLECTION`, `PROGRESS` (+8 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **128 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **126 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `MintView` connect `MintView` to `ReceiveView`, `Screen`, `ImageTools`, `StateNft`?**
-  _High betweenness centrality (0.056) - this node is a cross-community bridge._
+- **Why does `MintView` connect `MintView` to `ReceiveView`, `Screen`, `StateNft`?**
+  _High betweenness centrality (0.048) - this node is a cross-community bridge._
 - **Why does `StateNft` connect `StateNft` to `BuriedCoinTest`?**
-  _High betweenness centrality (0.037) - this node is a cross-community bridge._
-- **Why does `ImageTools` connect `ImageTools` to `ImageFormatTest`?**
-  _High betweenness centrality (0.035) - this node is a cross-community bridge._
+  _High betweenness centrality (0.032) - this node is a cross-community bridge._
+- **Why does `Cb` connect `MintEngine` to `MintView`?**
+  _High betweenness centrality (0.020) - this node is a cross-community bridge._
 - **What connects `HUB`, `TOKEN`, `NFT` to the rest of the system?**
   _13 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `MintService` be split into smaller, more focused modules?**
   _Cohesion score 0.06605222734254992 - nodes in this community are weakly interconnected._
 - **Should `MintView` be split into smaller, more focused modules?**
-  _Cohesion score 0.12083973374295955 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.11468531468531469 - nodes in this community are weakly interconnected._
 - **Should `StateNft` be split into smaller, more focused modules?**
   _Cohesion score 0.10631229235880399 - nodes in this community are weakly interconnected._

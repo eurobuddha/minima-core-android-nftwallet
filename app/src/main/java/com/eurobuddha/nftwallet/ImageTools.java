@@ -161,7 +161,7 @@ public final class ImageTools {
         }
         // last resort: halve dimensions at floor quality until it fits —
         // every fixed slim target in the app relies on this never failing
-        for (int dim = 100; dim >= 16; dim /= 2) {
+        for (int dim = 128; dim >= 16; dim /= 2) {
             float scale = Math.min(1f, dim / (float) Math.max(src.getWidth(), src.getHeight()));
             Bitmap scaled = Bitmap.createScaledBitmap(src,
                     Math.max(1, Math.round(src.getWidth() * scale)),

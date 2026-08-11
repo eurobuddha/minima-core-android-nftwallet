@@ -1,7 +1,7 @@
 {
   "app/build.gradle": {
-    "mtime": 1786437312.0053072,
-    "ast_hash": "3e45136524f102227670ff551da13976",
+    "mtime": 1786439058.7797585,
+    "ast_hash": "27242af89842a30427ba852b1287f0f8",
     "semantic_hash": ""
   },
   "app/src/main/java/com/eurobuddha/nftwallet/BalancesView.java": {

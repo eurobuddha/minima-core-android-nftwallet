@@ -385,7 +385,7 @@ public final class MintEngine {
     private static void tokenCoins(NodeApi node, String tid, CoinsCb ok, java.util.function.Consumer<String> fail) {
         // The tokenid is adopted from a balance row (chain data) — never interpolate it unvetted.
         if (!Util.isValidHexId(tid)) { fail.accept("bad tokenid - refusing to build a command"); return; }
-        cmd(node, "coins relevant:true tokenid:" + tid, new Cb() {
+        cmd(node, "coins relevant:true own:true tokenid:" + tid, new Cb() {
             @Override public void ok(JSONObject res) {
                 JSONArray arr = res.optJSONArray("response");
                 ok.ok(arr == null ? new JSONArray() : arr);

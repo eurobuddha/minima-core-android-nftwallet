@@ -145,6 +145,30 @@ public class NodeApi {
     }
 
     public void cmd(String command, long timeoutMs, Cb cb) {
+        // `coins ... own:true` (node core vc81+) filters to the node wallet's OWN addresses so
+        // tracked watch-scripts (e.g. minimaWallet's classic addresses) never show here. An older
+        // node rejects the unknown parameter — retry once without it (pre-own behaviour).
+        if (command.contains(" own:true")) {
+            final String fallback = command.replace(" own:true", "");
+            cmdInner(command, timeoutMs, new Cb() {
+                @Override public void onResult(JSONObject json) {
+                    if (json != null && !json.optBoolean("status", true)
+                            && String.valueOf(json.opt("error")).contains("Invalid parameter : own")) {
+                        cmdInner(fallback, timeoutMs, cb);
+                        return;
+                    }
+                    if (cb != null) cb.onResult(json);
+                }
+                @Override public void onError(String message) {
+                    if (cb != null) cb.onError(message);
+                }
+            });
+            return;
+        }
+        cmdInner(command, timeoutMs, cb);
+    }
+
+    private void cmdInner(String command, long timeoutMs, Cb cb) {
         if (mReleased) {
             // ALWAYS dispatch: a caller that never hears back can wedge forever — BookRepository
             // sets `scanning = true` before calling and only clears it in the callback, so a

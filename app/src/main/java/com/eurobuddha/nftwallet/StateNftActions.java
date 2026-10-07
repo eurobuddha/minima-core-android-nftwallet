@@ -303,7 +303,7 @@ public final class StateNftActions {
                                           final Runnable onDone) {
         final Sheet.Progress progress = progressDialog(act,
                 "Sending " + collectionName, "Finding the items you still hold…");
-        act.node().cmd("coins relevant:true tokenid:" + tokenid, new NodeApi.Cb() {
+        act.node().cmd("coins relevant:true own:true tokenid:" + tokenid, new NodeApi.Cb() {
             @Override public void onResult(JSONObject json) {
                 org.json.JSONArray arr = json.optJSONArray("response");
                 final java.util.List<JSONObject> coins = new java.util.ArrayList<>();
@@ -454,7 +454,7 @@ public final class StateNftActions {
                                       final Runnable onDone) {
         final Sheet.Progress progress = progressDialog(act,
                 "Burying " + collectionName, "Finding the coins you still hold…");
-        act.node().cmd("coins relevant:true tokenid:" + tokenid, new NodeApi.Cb() {
+        act.node().cmd("coins relevant:true own:true tokenid:" + tokenid, new NodeApi.Cb() {
             @Override public void onResult(JSONObject json) {
                 org.json.JSONArray arr = json.optJSONArray("response");
                 final java.util.List<JSONObject> coins = new java.util.ArrayList<>();
@@ -533,7 +533,7 @@ public final class StateNftActions {
             // Stop when the activity is gone — a recreated activity confirms via balances anyway,
             // and polling a released NodeApi for 7 minutes just leaks the old activity + dialog.
             if (act.isFinishing() || act.isDestroyed()) return;
-            act.node().cmd("coins relevant:true tokenid:" + tokenid, new NodeApi.Cb() {
+            act.node().cmd("coins relevant:true own:true tokenid:" + tokenid, new NodeApi.Cb() {
             @Override public void onResult(JSONObject json) {
                 boolean present = false;
                 org.json.JSONArray arr = json.optJSONArray("response");

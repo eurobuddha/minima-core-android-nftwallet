@@ -467,7 +467,7 @@ public class BalancesView extends BaseView {
 
     private void loadCoins(TokenBalance b, final LinearLayout into) {
         if (!Util.isValidHexId(b.tokenid)) return;
-        act.node().cmd("coins relevant:true tokenid:" + b.tokenid, new NodeApi.Cb() {
+        act.node().cmd("coins relevant:true own:true tokenid:" + b.tokenid, new NodeApi.Cb() {
             @Override public void onResult(org.json.JSONObject json) {
                 org.json.JSONArray arr = json.optJSONArray("response");
                 if (arr == null || arr.length() == 0) return;

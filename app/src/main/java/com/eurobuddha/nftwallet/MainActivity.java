@@ -380,7 +380,7 @@ public class MainActivity extends AppCompatActivity {
      * each reply to one token's coins. Mirrors the adaptive-paging rule the History tab follows.
      */
     private void loadCoins() {
-        node.cmd("coins relevant:true", new NodeApi.Cb() {
+        node.cmd("coins relevant:true own:true", new NodeApi.Cb() {
             @Override public void onResult(JSONObject json) {
                 setPaired(true);
                 coins.clear();
@@ -444,7 +444,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void fetchCoinsFor(final java.util.List<String> tokenids, final int i) {
         if (i >= tokenids.size()) { loadSendable(); return; }
-        node.cmd("coins relevant:true tokenid:" + tokenids.get(i), new NodeApi.Cb() {
+        node.cmd("coins relevant:true own:true tokenid:" + tokenids.get(i), new NodeApi.Cb() {
             @Override public void onResult(JSONObject json) {
                 addCoins(json.optJSONArray("response"));
                 fetchCoinsFor(tokenids, i + 1);

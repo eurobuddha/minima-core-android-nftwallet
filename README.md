@@ -4,7 +4,7 @@ The full-suite [Minima](https://minima.global) companion wallet — the old offi
 2.47.2-era feature set in a native Java body, plus regular NFT minting and **State NFT
 locked-edition collections**.
 
-Talks to the Minima Core node APK (`org.minimarex.minimacore`) exclusively over the
+Talks to the Minima Core node APK (`com.eurobuddha.minimacore`) exclusively over the
 `minimaapi.aar` broadcast-Intent IPC. No embedded node, no local keys — the node signs
 (`txnsign publickey:auto`).
 

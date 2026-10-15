@@ -16,15 +16,20 @@ import java.net.URL;
  */
 public final class ImageLoader {
 
-    // Bounded by total bitmap bytes so a few large icons can't grow without limit.
+    // Bounded by total bitmap bytes so a few large icons can't grow without limit. Sized so a few
+    // full-resolution viewer bitmaps (~10MB each at 1600px) survive — a fixed 6MB evicted every
+    // full image immediately, re-decoding on each open and making swipes feel sluggish.
+    private static final int CACHE_BYTES =
+            (int) Math.min(48L * 1024 * 1024, Runtime.getRuntime().maxMemory() / 6);
     private static final LruCache<String, Bitmap> CACHE =
-            new LruCache<String, Bitmap>(6 * 1024 * 1024) {
+            new LruCache<String, Bitmap>(CACHE_BYTES) {
                 @Override protected int sizeOf(String key, Bitmap value) {
                     return value.getByteCount();
                 }
             };
 
     private static final int THUMB_PX = 320;     // list rows + the 128dp detail icon
+    private static final int TILE_PX  = 640;     // gallery grid cells (half-screen squares)
     private static final int FULL_PX  = 1600;     // NFT full-resolution view (bounded so it can't OOM)
     private static final int MAX_BYTES = 8 * 1024 * 1024;   // hard cap so a hostile icon url can't OOM us
 
@@ -48,13 +53,28 @@ public final class ImageLoader {
      *  success. Matches the dapp: identicon base, real graphic wins when it loads. onLoaded fires once on a
      *  fresh successful decode (so the caller can re-render, like the dapp's renderBalances-after-resolve). */
     public static void loadOver(final MainActivity act, final String url, final ImageView iv, final Runnable onLoaded) {
+        loadOverPx(act, url, iv, THUMB_PX, onLoaded);
+    }
+
+    /** As {@link #loadOver} at gallery-tile resolution (~640px) — half-screen grid squares. */
+    public static void loadTile(final MainActivity act, final String url, final ImageView iv, final Runnable onLoaded) {
+        loadOverPx(act, url, iv, TILE_PX, onLoaded);
+    }
+
+    /** As {@link #loadOver} at full resolution (bounded 1600px) — the zoomable item viewer. */
+    public static void loadFullOver(final MainActivity act, final String url, final ImageView iv, final Runnable onLoaded) {
+        loadOverPx(act, url, iv, FULL_PX, onLoaded);
+    }
+
+    private static void loadOverPx(final MainActivity act, final String url, final ImageView iv,
+                                   final int reqPx, final Runnable onLoaded) {
         iv.setTag(url);
         if (url == null || url.isEmpty()) return;      // keep the identicon
-        String key = THUMB_PX + "|" + url;
+        String key = reqPx + "|" + url;
         Bitmap cached = CACHE.get(key);
         if (cached != null) { iv.setImageBitmap(cached); return; }
         EXEC.execute(() -> {
-            final Bitmap b = decode(url, THUMB_PX);
+            final Bitmap b = decode(url, reqPx);
             if (b == null) return;                      // keep the identicon on failure
             CACHE.put(key, b);
             act.runOnUiThread(() -> {
@@ -63,6 +83,29 @@ public final class ImageLoader {
                 if (onLoaded != null) onLoaded.run();
             });
         });
+    }
+
+    /** Warm the cache at full resolution with no target view — the viewer prefetches its neighbours
+     *  so a swipe lands on an already-decoded image. */
+    public static void prefetchFull(final String url) {
+        if (url == null || url.isEmpty()) return;
+        final String key = FULL_PX + "|" + url;
+        if (CACHE.get(key) != null) return;
+        EXEC.execute(() -> {
+            if (CACHE.get(key) != null) return;
+            Bitmap b = decode(url, FULL_PX);
+            if (b != null) CACHE.put(key, b);
+        });
+    }
+
+    /** Best already-cached bitmap for this url (full, then tile, then thumb), or null. The viewer
+     *  shows this instantly while the full resolution decodes. */
+    public static Bitmap cachedBest(String url) {
+        if (url == null || url.isEmpty()) return null;
+        Bitmap b = CACHE.get(FULL_PX + "|" + url);
+        if (b == null) b = CACHE.get(TILE_PX + "|" + url);
+        if (b == null) b = CACHE.get(THUMB_PX + "|" + url);
+        return b;
     }
 
     private static void load(final MainActivity act, final String url, final ImageView iv, int fallbackRes, final int reqPx) {

@@ -84,7 +84,10 @@ public final class CoinDetailDialog {
                     lp.gravity = Gravity.CENTER_HORIZONTAL;
                     iv.setLayoutParams(lp);
                     iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                    ImageLoader.loadOver(act, "data:image/jpeg;base64," + b64, iv, null);
+                    final String uri = ImageTools.dataUri(b64);   // sniffs the real mime (webp/png/jpeg/svg)
+                    final String portLabel = "Port " + port;
+                    ImageLoader.loadOver(act, uri, iv, null);
+                    iv.setOnClickListener(v -> NftViewer.openSingle(act, uri, portLabel));
                     box.addView(iv);
                 }
             }

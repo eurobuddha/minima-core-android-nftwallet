@@ -49,8 +49,6 @@ public class GalleryView extends BaseView {
 
     private EditText search;
     private TextView tabCollected, tabFavs, emptyNote;
-    private LinearLayout crumbBar;
-    private TextView crumbBack, crumbActions;
     private boolean showFavs = false;
 
     /** tokenid of the collection we've drilled into, or null at the top level. */
@@ -63,17 +61,28 @@ public class GalleryView extends BaseView {
 
     private final List<GItem> items = new ArrayList<>();
 
+    /** Cover-hero card for the collection we're drilled into (full-span header row), else null. */
+    private GItem heroCard;
+
     public GalleryView(MainActivity a) {
         super(a, R.layout.view_gallery);
         header = find(R.id.galleryHeader);
         grid = find(R.id.galleryGrid);
-        grid.setLayoutManager(new GridLayoutManager(a, 2));
+        GridLayoutManager glm = new GridLayoutManager(a, 2);
+        // The collection cover hero is a full-span header row above the item grid.
+        glm.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
+            @Override public int getSpanSize(int position) {
+                GridLayoutManager g = (GridLayoutManager) grid.getLayoutManager();
+                return adapter.hasHeader() && position == 0 && g != null ? g.getSpanCount() : 1;
+            }
+        });
+        grid.setLayoutManager(glm);
         // Adaptive density: ~190dp per column (2 on a phone, 3-4 on a Fold / landscape).
         grid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, orr, ob) -> {
             int wDp = (int) ((r - l) / a.getResources().getDisplayMetrics().density);
             int cols = Math.max(2, wDp / 190);
-            GridLayoutManager glm = (GridLayoutManager) grid.getLayoutManager();
-            if (glm != null && glm.getSpanCount() != cols) glm.setSpanCount(cols);
+            GridLayoutManager g = (GridLayoutManager) grid.getLayoutManager();
+            if (g != null && g.getSpanCount() != cols) g.setSpanCount(cols);
         });
         grid.setAdapter(adapter);
         buildHeader();
@@ -112,40 +121,6 @@ public class GalleryView extends BaseView {
         });
         header.addView(search);
 
-        // Shown only while drilled into a collection.
-        crumbBar = new LinearLayout(act);
-        crumbBar.setOrientation(LinearLayout.HORIZONTAL);
-        crumbBar.setGravity(Gravity.CENTER_VERTICAL);
-        crumbBar.setBackgroundColor(Design.surface2());
-        crumbBar.setPadding(dp(10), dp(8), dp(10), dp(8));
-        crumbBar.setVisibility(View.GONE);
-
-        crumbBack = new TextView(act);
-        crumbBack.setTextColor(Design.accent());
-        crumbBack.setTextSize(12f);
-        crumbBack.setTypeface(Design.typefaceBold());
-        crumbBack.setMaxLines(1);
-        crumbBack.setEllipsize(TextUtils.TruncateAt.END);
-        crumbBack.setOnClickListener(v -> closeCollection());
-        crumbBar.addView(crumbBack, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        crumbActions = new TextView(act);
-        crumbActions.setText("COLLECTION ⌄");
-        crumbActions.setTextColor(Design.dim());
-        crumbActions.setTextSize(10f);
-        crumbActions.setLetterSpacing(0.08f);
-        crumbActions.setTypeface(Design.typefaceBold());
-        crumbActions.setPadding(dp(8), 0, 0, 0);
-        crumbActions.setOnClickListener(v -> showCollectionActions());
-        crumbBar.addView(crumbActions);
-
-        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        clp.bottomMargin = dp(8);
-        crumbBar.setLayoutParams(clp);
-        header.addView(crumbBar);
-
         emptyNote = new TextView(act);
         emptyNote.setTextColor(Design.dim());
         emptyNote.setTextSize(13f);
@@ -174,12 +149,8 @@ public class GalleryView extends BaseView {
         tabCollected.setBackgroundColor(!fav ? Design.accent() : Design.surface2());
         tabFavs.setTextColor(fav ? Design.onAccent() : Design.dim());
         tabFavs.setBackgroundColor(fav ? Design.accent() : Design.surface2());
-        if (openCollection != null) {
-            crumbBar.setVisibility(View.VISIBLE);
-            crumbBack.setText("←  All NFTs   ·   " + openCollectionName);
-        } else {
-            crumbBar.setVisibility(View.GONE);
-        }
+        // Drilled-in state is carried by the cover-hero header row inside the grid (back, title,
+        // count and collection actions all live on the banner).
         rebuild();
     }
 
@@ -194,6 +165,7 @@ public class GalleryView extends BaseView {
 
     private void rebuild() {
         items.clear();
+        heroCard = null;
         String q = search == null ? "" : search.getText().toString().trim().toLowerCase();
         Set<String> favs = favs();
         // Group only at the top level of the Collected tab. Favourites are per item, and once
@@ -236,6 +208,9 @@ public class GalleryView extends BaseView {
                 if (mine.isEmpty()) continue;
                 // Sealed index order, not UTXO order — #2 should follow #1 every time.
                 java.util.Collections.sort(mine, (x, y) -> Integer.compare(x.idx, y.idx));
+                if (openCollection != null && openCollection.equals(b.tokenid)) {
+                    heroCard = collectionCard(b, meta, mine);   // the cover banner above the item grid
+                }
                 if (grouped) items.add(collectionCard(b, meta, mine));
                 else items.addAll(mine);
             } else {
@@ -431,11 +406,108 @@ public class GalleryView extends BaseView {
         }
     }
 
-    private class GalleryAdapter extends RecyclerView.Adapter<Holder> {
+    private class HeroHolder extends RecyclerView.ViewHolder {
+        final ImageView cover;
+        final TextView title, count, desc;
 
-        @Override public int getItemCount() { return items.size(); }
+        HeroHolder(View root, ImageView cover, TextView title, TextView count, TextView desc) {
+            super(root);
+            this.cover = cover; this.title = title; this.count = count; this.desc = desc;
+        }
+    }
 
-        @Override public Holder onCreateViewHolder(ViewGroup parent, int viewType) {
+    private class GalleryAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+
+        static final int TYPE_HERO = 1;
+
+        boolean hasHeader() { return openCollection != null && heroCard != null; }
+
+        @Override public int getItemCount() { return items.size() + (hasHeader() ? 1 : 0); }
+
+        @Override public int getItemViewType(int position) {
+            return hasHeader() && position == 0 ? TYPE_HERO : 0;
+        }
+
+        /** The drilled-in collection's cover banner: art + scrim + back/title/count/actions. */
+        private HeroHolder createHero() {
+            LinearLayout wrap = new LinearLayout(act);
+            wrap.setOrientation(LinearLayout.VERTICAL);
+            RecyclerView.LayoutParams wlp = new RecyclerView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            int m = dp(4);
+            wlp.setMargins(m, m, m, m);
+            wrap.setLayoutParams(wlp);
+
+            FrameLayout banner = new FrameLayout(act);
+            ImageView cover = new ImageView(act);
+            cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            banner.addView(cover, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            View scrim = new View(act);
+            scrim.setBackground(new android.graphics.drawable.GradientDrawable(
+                    android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                    new int[]{ 0x66000000, 0x00000000, 0xB3000000 }));
+            banner.addView(scrim, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+            TextView back = new TextView(act);
+            back.setText("←  All NFTs");
+            back.setTextColor(0xFFFFFFFF);
+            back.setTextSize(13f);
+            back.setTypeface(Design.typefaceBold());
+            back.setShadowLayer(4f, 0, 1, 0xAA000000);
+            back.setPadding(dp(10), dp(10), dp(14), dp(12));
+            back.setOnClickListener(v -> closeCollection());
+            banner.addView(back, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.START | Gravity.TOP));
+
+            LinearLayout foot = new LinearLayout(act);
+            foot.setOrientation(LinearLayout.VERTICAL);
+            foot.setPadding(dp(12), 0, dp(12), dp(10));
+            TextView title = new TextView(act);
+            title.setTextColor(0xFFFFFFFF);
+            title.setTextSize(19f);
+            title.setTypeface(Design.typefaceBold(), Typeface.BOLD);
+            title.setMaxLines(2);
+            title.setEllipsize(TextUtils.TruncateAt.END);
+            foot.addView(title);
+            LinearLayout row = new LinearLayout(act);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            TextView count = new TextView(act);
+            count.setTextColor(0xCCFFFFFF);
+            count.setTextSize(10.5f);
+            count.setLetterSpacing(0.08f);
+            count.setTypeface(Design.typefaceBold());
+            row.addView(count, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            TextView actions = new TextView(act);
+            actions.setText("COLLECTION ⌄");
+            actions.setTextColor(0xFFFFFFFF);
+            actions.setTextSize(10.5f);
+            actions.setLetterSpacing(0.08f);
+            actions.setTypeface(Design.typefaceBold());
+            actions.setPadding(dp(10), dp(4), 0, dp(4));
+            actions.setOnClickListener(v -> showCollectionActions());
+            row.addView(actions);
+            foot.addView(row);
+            banner.addView(foot, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
+            wrap.addView(banner, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(200)));
+
+            TextView desc = new TextView(act);
+            desc.setTextColor(Design.dim());
+            desc.setTextSize(12.5f);
+            desc.setBackgroundColor(Design.surface());
+            desc.setPadding(dp(10), dp(8), dp(10), dp(8));
+            wrap.addView(desc, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            return new HeroHolder(wrap, cover, title, count, desc);
+        }
+
+        @Override public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+            if (viewType == TYPE_HERO) return createHero();
             FrameLayout shell = new FrameLayout(act);
             RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -506,8 +578,27 @@ public class GalleryView extends BaseView {
             return new Holder(shell, art, badge, name, sub, idxChip, heart);
         }
 
-        @Override public void onBindViewHolder(Holder h, int position) {
-            final GItem it = items.get(position);
+        @Override public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
+            if (holder instanceof HeroHolder) {
+                HeroHolder hh = (HeroHolder) holder;
+                hh.title.setText(heroCard.name == null ? "Collection" : heroCard.name);
+                hh.count.setText(heroCard.owned + " OF "
+                        + (heroCard.meta == null ? "?" : heroCard.meta.size) + " HELD");
+                hh.desc.setVisibility(heroCard.description == null || heroCard.description.isEmpty()
+                        ? View.GONE : View.VISIBLE);
+                hh.desc.setText(heroCard.description == null ? "" : heroCard.description);
+                hh.cover.setImageBitmap(Identicon.forToken(heroCard.tokenid + "#-1", dp(200)));
+                if (heroCard.imageUrl != null && !heroCard.imageUrl.isEmpty()) {
+                    ImageLoader.loadTile(act, heroCard.imageUrl, hh.cover, null);
+                }
+                // Tap the cover to start flicking from the first item you hold.
+                hh.cover.setOnClickListener(v -> {
+                    if (!items.isEmpty()) NftViewer.open(act, new ArrayList<>(items), 0, viewerHost);
+                });
+                return;
+            }
+            Holder h = (Holder) holder;
+            final GItem it = items.get(position - (hasHeader() ? 1 : 0));
             h.name.setText(it.name == null ? "NFT" : it.name);
             h.sub.setText(it.sub == null ? "" : it.sub.toUpperCase());
 
@@ -557,18 +648,22 @@ public class GalleryView extends BaseView {
         final Sheet sheet = Sheet.create(act, it.name);
         LinearLayout box = sheet.body();
 
-        // hero
+        // hero — never crop the art: fit, size to the image, tap enters the zoom viewer
         final ImageView hero = new ImageView(act);
-        hero.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(200)));
-        hero.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        hero.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        hero.setAdjustViewBounds(true);
+        hero.setMaxHeight(dp(340));
+        hero.setScaleType(ImageView.ScaleType.FIT_CENTER);
         hero.setImageBitmap(Identicon.forToken(it.tokenid + "#" + it.idx, dp(200)));
         if (it.imageUrl != null && !it.imageUrl.isEmpty()) {
-            ImageLoader.loadOver(act, it.imageUrl, hero, null);
-            hero.setOnClickListener(v -> showImageFull(it.imageUrl));
+            ImageLoader.loadFullOver(act, it.imageUrl, hero, null);
+            hero.setOnClickListener(v -> NftViewer.open(act,
+                    java.util.Collections.singletonList(it), 0, viewerHost));
         }
         box.addView(hero);
         TextView hint = new TextView(act);
-        hint.setText("tap image for full resolution");
+        hint.setText("tap image to open the fullscreen viewer");
         hint.setTextColor(Design.dim());
         hint.setTextSize(10f);
         hint.setGravity(Gravity.CENTER);
@@ -609,8 +704,23 @@ public class GalleryView extends BaseView {
         if (it.coin != null) kvCopy(box, "Coin ID", it.coin.coinid);
         if (it.creator != null && !it.creator.isEmpty()) kvCopy(box, "Creator", it.creator);
         if (it.stateNft && it.idx > 0) kvCopy(box, "Identity (state 0)", it.idx + " · sealed");
+        if (it.coin != null) {
+            if (!it.coin.address.isEmpty()) kvCopy(box, "Held at address", it.coin.address);
+            if (!it.coin.amount.isEmpty()) kvCopy(box, "Amount", it.coin.amount);
+            if (!it.coin.created.isEmpty()) kvCopy(box, "Created block", it.coin.created);
+        }
         if (it.externalUrl != null && !it.externalUrl.isEmpty()) linkRow(box, "External URL", it.externalUrl);
         if (it.webvalidate != null && !it.webvalidate.isEmpty()) linkRow(box, "Web validation", it.webvalidate);
+        // Every state port the coin carries, verbatim-copyable (huge embedded art is summarised on
+        // screen; the copy still carries the full value).
+        if (it.coin != null) {
+            for (String[] e : it.coin.state) {
+                String val = e[1] == null ? "" : e[1];
+                String shown = "1".equals(e[0]) && val.length() > 120
+                        ? "[embedded artwork, " + val.length() + " chars]" : val;
+                kvCopy(box, "State " + e[0], val, shown);
+            }
+        }
 
         final boolean fav = favs().contains(it.favKey);
         sheet.action("Close", Sheet.Style.SECONDARY, null);
@@ -671,24 +781,12 @@ public class GalleryView extends BaseView {
         }
     }
 
-    /** Full-screen, full-resolution image. Tap to dismiss. */
-    private void showImageFull(String url) {
-        ImageView iv = new ImageView(act);
-        iv.setAdjustViewBounds(true);
-        iv.setBackgroundColor(0xFF000000);
-        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        ImageLoader.loadFull(act, url, iv, R.drawable.ic_coin_placeholder);
-        final android.app.Dialog dlg = new android.app.Dialog(act);
-        dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
-        dlg.setContentView(iv);
-        if (dlg.getWindow() != null) {
-            dlg.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0xFF000000));
-        }
-        iv.setOnClickListener(v -> dlg.dismiss());
-        dlg.show();
+    private void kvCopy(LinearLayout box, String label, String value) {
+        kvCopy(box, label, value, value);
     }
 
-    private void kvCopy(LinearLayout box, final String label, final String value) {
+    /** Label/value row: {@code shown} is displayed, tapping copies the FULL {@code value}. */
+    private void kvCopy(LinearLayout box, final String label, final String value, String shown) {
         LinearLayout r = new LinearLayout(act);
         r.setOrientation(LinearLayout.HORIZONTAL);
         r.setPadding(0, dp(4), 0, dp(4));
@@ -698,7 +796,7 @@ public class GalleryView extends BaseView {
         l.setTextSize(12f);
         r.addView(l, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         TextView v = new TextView(act);
-        v.setText(value.length() > 26 ? Util.shorten(value) : value);
+        v.setText(shown);   // full identifiers on screen — tap copies the complete value
         v.setTextColor(Design.text());
         v.setTextSize(12f);
         v.setTypeface(Typeface.MONOSPACE);

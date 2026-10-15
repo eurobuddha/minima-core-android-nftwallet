@@ -285,9 +285,9 @@ public class BalancesView extends BaseView {
         else { big.setImageBitmap(Identicon.forToken(b.tokenid, dp(128))); ImageLoader.loadOver(act, b.meta.iconUrl, big, null); }
         box.addView(big);
         if (b.hasIcon()) {
-            big.setOnClickListener(v -> showImageFull(b.meta.iconUrl));
+            big.setOnClickListener(v -> NftViewer.openSingle(act, b.meta.iconUrl, b.name));
             TextView hint = new TextView(act);
-            hint.setText(b.isNft() ? "Tap image for full resolution" : "Tap image to enlarge");
+            hint.setText("Tap image to open the fullscreen viewer");
             hint.setTextColor(Design.dim()); hint.setTextSize(11f); hint.setGravity(Gravity.CENTER);
             hint.setPadding(0, 0, 0, dp(8)); box.addView(hint);
         }
@@ -541,23 +541,6 @@ public class BalancesView extends BaseView {
         }
         r.setOnClickListener(v -> CoinDetailDialog.show(act, c));
         return r;
-    }
-
-    /** Full-screen, full-resolution image (for NFT art). Tap to dismiss. */
-    private void showImageFull(String url) {
-        ImageView iv = new ImageView(act);
-        iv.setAdjustViewBounds(true);
-        iv.setBackgroundColor(0xFF000000);
-        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        ImageLoader.loadFull(act, url, iv, R.drawable.ic_coin_placeholder);
-        final android.app.Dialog dlg = new android.app.Dialog(act);
-        dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
-        dlg.setContentView(iv);
-        if (dlg.getWindow() != null) {
-            dlg.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0xFF000000));
-        }
-        iv.setOnClickListener(v -> dlg.dismiss());
-        dlg.show();
     }
 
     /** Label/value row; tapping it copies the value (the old wallet's copy-everywhere behaviour). */

@@ -14,7 +14,8 @@ import androidx.appcompat.widget.AppCompatImageView;
 /**
  * Full-screen NFT viewer image: pinch to zoom (1x–6x), drag to pan (clamped to the image),
  * double-tap to toggle 1x/2.5x. Matrix-based on a plain ImageView — no dependencies.
- * Copied verbatim from Minimal Wallet (apks/wallet ZoomImageView, 0.2.21) — keep in step.
+ * Copied from Minimal Wallet (apks/wallet ZoomImageView, 0.2.21) — keep in step. One addition
+ * here: a swipe-UP listener ("swipe up for details"); port it back upstream when syncing.
  */
 @SuppressLint("ClickableViewAccessibility")
 public class ZoomImageView extends AppCompatImageView {
@@ -44,6 +45,13 @@ public class ZoomImageView extends AppCompatImageView {
         mTapListener = zListener;
     }
 
+    /** Fired on an upward fling while NOT zoomed in — "swipe up for details". */
+    private Runnable mSwipeUpListener;
+
+    public void setSwipeUpListener(Runnable zListener) {
+        mSwipeUpListener = zListener;
+    }
+
     public ZoomImageView(Context zContext) {
         super(zContext);
         setScaleType(ScaleType.MATRIX);
@@ -62,11 +70,16 @@ public class ZoomImageView extends AppCompatImageView {
                 return true;
             }
             @Override public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
-                // Only when fit-to-view: zoomed in, a horizontal drag means PAN, never page-turn.
-                if (mSwipeListener == null || mScale > 1.01f || e1 == null) return false;
-                float dx = e2.getX() - e1.getX();
+                // Only when fit-to-view: zoomed in, any drag means PAN, never navigation.
+                if (mScale > 1.01f || e1 == null) return false;
                 float density = getResources().getDisplayMetrics().density;
-                if (Math.abs(dx) < 60 * density || Math.abs(vx) < Math.abs(vy)) return false;
+                float dx = e2.getX() - e1.getX(), dy = e2.getY() - e1.getY();
+                if (Math.abs(vy) > Math.abs(vx)) {
+                    // Vertical fling: upward opens details; downward is left alone.
+                    if (mSwipeUpListener != null && dy < -60 * density) { mSwipeUpListener.run(); return true; }
+                    return false;
+                }
+                if (mSwipeListener == null || Math.abs(dx) < 60 * density) return false;
                 mSwipeListener.onSwipe(dx < 0);   // finger left → next item
                 return true;
             }

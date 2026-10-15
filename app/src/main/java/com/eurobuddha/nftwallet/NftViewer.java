@@ -76,19 +76,6 @@ public final class NftViewer {
         back.setContentDescription("Close viewer");
         back.setOnClickListener(v -> d.dismiss());
         top.addView(back);
-        final TextView title = new TextView(act);
-        title.setTextColor(Color.WHITE);
-        title.setTypeface(Design.typefaceBold(), Typeface.BOLD);
-        title.setTextSize(16f);
-        title.setMaxLines(1);
-        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        top.addView(title, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        final TextView counter = new TextView(act);
-        counter.setTextColor(Color.WHITE);
-        counter.setTextSize(13f);
-        counter.setTypeface(Typeface.MONOSPACE);
-        counter.setPadding(dp(act, 8), 0, dp(act, 8), 0);
-        top.addView(counter);
         frame.addView(top, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP));
 
@@ -129,18 +116,50 @@ public final class NftViewer {
             pill.setCornerRadius(dp(act, Math.max(2, (int) Design.radiusDp())));
             action.setBackground(pill);
             bottomBar.addView(action);
-
-            frame.addView(bottomBar, new FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
         }
+
+        // ---- caption: ALWAYS visible, even with the chrome hidden — the artwork is never an
+        // unlabeled image. Name + the key facts; tapping it opens the full info sheet. -----------
+        LinearLayout caption = new LinearLayout(act);
+        caption.setOrientation(LinearLayout.VERTICAL);
+        caption.setBackgroundColor(0x99000000);
+        caption.setPadding(dp(act, 14), dp(act, 8), dp(act, 14), dp(act, 10));
+        final TextView capName = new TextView(act);
+        capName.setTextColor(Color.WHITE);
+        capName.setTextSize(15f);
+        capName.setTypeface(Design.typefaceBold(), Typeface.BOLD);
+        capName.setMaxLines(1);
+        capName.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        caption.addView(capName);
+        final TextView capInfo = new TextView(act);
+        capInfo.setTextColor(0xCCFFFFFF);
+        capInfo.setTextSize(10.5f);
+        capInfo.setLetterSpacing(0.07f);
+        capInfo.setTypeface(Design.typefaceBold());
+        capInfo.setPadding(0, dp(act, 2), 0, 0);
+        caption.addView(capInfo);
+        if (host != null) {
+            caption.setOnClickListener(v -> host.showDetail(list.get(pos[0])));
+        }
+
+        LinearLayout bottomGroup = new LinearLayout(act);
+        bottomGroup.setOrientation(LinearLayout.VERTICAL);
+        if (bottomBar != null) bottomGroup.addView(bottomBar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        bottomGroup.addView(caption, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        frame.addView(bottomGroup, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
         final LinearLayout bottom = bottomBar;
         final TextView heartF = heart, actionF = action;
 
         // ---- show one item in place: title, counter, heart, action, image ------------------------
         final Runnable show = () -> {
             GalleryView.GItem it = list.get(pos[0]);
-            title.setText(it.name == null || it.name.isEmpty() ? "NFT" : it.name);
-            counter.setText(list.size() > 1 ? (pos[0] + 1) + " / " + list.size() : "");
+            capName.setText(it.name == null || it.name.isEmpty() ? "NFT" : it.name);
+            String info = infoLine(it, pos[0], list.size());
+            capInfo.setText(info);
+            capInfo.setVisibility(info.isEmpty() ? View.GONE : View.VISIBLE);
 
             if (host != null) {
                 boolean fav = it.favKey != null && host.isFav(it.favKey);
@@ -207,6 +226,11 @@ public final class NftViewer {
             show.run();
         });
 
+        // Swipe up at 1x: straight into the full info sheet, same as tapping the caption.
+        if (host != null) {
+            zoom.setSwipeUpListener(() -> host.showDetail(list.get(pos[0])));
+        }
+
         // Single tap: fade ALL chrome (and the system bars with it) so the artwork owns the screen.
         final boolean[] chrome = { true };
         zoom.setTapListener(() -> {
@@ -231,6 +255,24 @@ public final class NftViewer {
         show.run();
         d.setContentView(frame);
         d.show();
+    }
+
+    /** The always-visible one-line summary under the artwork: position, edition, status. */
+    private static String infoLine(GalleryView.GItem it, int pos, int n) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        if (n > 1) parts.add((pos + 1) + " / " + n);
+        if (it.collection) {
+            parts.add("COLLECTION · " + it.owned + " HELD");
+        } else if (it.stateNft) {
+            if (it.idx > 0 && it.meta != null) parts.add("#" + it.idx + " OF " + it.meta.size);
+            parts.add("LOCKED EDITION");
+            if (it.coin != null && StateNft.stamped(it.coin.raw) == null) parts.add("UNSTAMPED");
+        } else if (it.balance != null) {
+            parts.add("1".equals(it.balance.total) ? "1 OF 1" : it.balance.total + " EDITIONS");
+        }
+        if (it.tokenid != null && !it.tokenid.isEmpty()
+                && Boolean.TRUE.equals(WebValidate.status(it.tokenid))) parts.add("✓ VALIDATED");
+        return android.text.TextUtils.join("  ·  ", parts);
     }
 
     /** Hide/show status + navigation bars with the chrome. */

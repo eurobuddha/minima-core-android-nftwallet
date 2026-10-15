@@ -68,6 +68,13 @@ public class GalleryView extends BaseView {
         header = find(R.id.galleryHeader);
         grid = find(R.id.galleryGrid);
         grid.setLayoutManager(new GridLayoutManager(a, 2));
+        // Adaptive density: ~190dp per column (2 on a phone, 3-4 on a Fold / landscape).
+        grid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, orr, ob) -> {
+            int wDp = (int) ((r - l) / a.getResources().getDisplayMetrics().density);
+            int cols = Math.max(2, wDp / 190);
+            GridLayoutManager glm = (GridLayoutManager) grid.getLayoutManager();
+            if (glm != null && glm.getSpanCount() != cols) glm.setSpanCount(cols);
+        });
         grid.setAdapter(adapter);
         buildHeader();
     }
@@ -385,7 +392,8 @@ public class GalleryView extends BaseView {
 
     // ===================== grid =====================
 
-    private static class GItem {
+    /** One gallery card. Package-visible so {@link NftViewer} can page the exact objects on screen. */
+    static class GItem {
         String tokenid, name, creator, sub, imageUrl, favKey, webvalidate, externalUrl, description;
         String searchBlob;         // lower-cased haystack; a collection's includes its item names
         boolean stateNft;
@@ -397,13 +405,29 @@ public class GalleryView extends BaseView {
         StateNft.Meta meta;        // state collection meta
     }
 
+    /** Grid tile image whose height always equals its width (donor: Minimal Wallet NftView). */
+    private static class SquareImageView extends androidx.appcompat.widget.AppCompatImageView {
+        SquareImageView(android.content.Context c) { super(c); }
+        @Override protected void onMeasure(int w, int h) { super.onMeasure(w, w); }
+    }
+
+    /** What the fullscreen viewer needs back from the gallery. */
+    private final NftViewer.Host viewerHost = new NftViewer.Host() {
+        @Override public boolean isFav(String key) { return favs().contains(key); }
+        @Override public void toggleFav(String key) { GalleryView.this.toggleFav(key); }
+        @Override public void showDetail(GItem it) { GalleryView.this.showDetail(it); }
+        @Override public void openCollection(GItem it) { GalleryView.this.openCollection(it); }
+    };
+
     private class Holder extends RecyclerView.ViewHolder {
-        final ImageView art;
+        final ImageView art, badge;
         final TextView name, sub, idxChip, heart;
 
-        Holder(FrameLayout shell, ImageView art, TextView name, TextView sub, TextView idxChip, TextView heart) {
+        Holder(FrameLayout shell, ImageView art, ImageView badge,
+               TextView name, TextView sub, TextView idxChip, TextView heart) {
             super(shell);
-            this.art = art; this.name = name; this.sub = sub; this.idxChip = idxChip; this.heart = heart;
+            this.art = art; this.badge = badge;
+            this.name = name; this.sub = sub; this.idxChip = idxChip; this.heart = heart;
         }
     }
 
@@ -425,10 +449,21 @@ public class GalleryView extends BaseView {
             shell.addView(col, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-            ImageView art = new ImageView(act);
-            art.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(150)));
+            FrameLayout artWrap = new FrameLayout(act);
+            ImageView art = new SquareImageView(act);   // height = width: square tiles at any column count
             art.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            col.addView(art);
+            artWrap.addView(art, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            ImageView badge = new ImageView(act);
+            int bs = dp(18);
+            FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(bs, bs, Gravity.BOTTOM | Gravity.END);
+            blp.setMargins(0, 0, dp(6), dp(6));
+            badge.setLayoutParams(blp);
+            badge.setImageBitmap(Identicon.checkBadge(bs));
+            badge.setVisibility(View.GONE);
+            artWrap.addView(badge);
+            col.addView(artWrap, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
             LinearLayout meta = new LinearLayout(act);
             meta.setOrientation(LinearLayout.VERTICAL);
@@ -468,7 +503,7 @@ public class GalleryView extends BaseView {
             hlp.setMargins(0, dp(4), dp(8), 0);
             shell.addView(heart, hlp);
 
-            return new Holder(shell, art, name, sub, idxChip, heart);
+            return new Holder(shell, art, badge, name, sub, idxChip, heart);
         }
 
         @Override public void onBindViewHolder(Holder h, int position) {
@@ -494,11 +529,24 @@ public class GalleryView extends BaseView {
 
             h.art.setImageBitmap(Identicon.forToken(it.tokenid + "#" + it.idx, dp(150)));
             if (it.imageUrl != null && !it.imageUrl.isEmpty()) {
-                ImageLoader.loadOver(act, it.imageUrl, h.art, null);
+                ImageLoader.loadTile(act, it.imageUrl, h.art, null);
             }
+
+            // Web-validation badge, same proof as BalancesView: the webvalidate URL hosts the tokenid.
+            boolean validated = it.webvalidate != null && !it.webvalidate.isEmpty()
+                    && Boolean.TRUE.equals(WebValidate.status(it.tokenid));
+            h.badge.setVisibility(validated ? View.VISIBLE : View.GONE);
+            if (it.webvalidate != null && !it.webvalidate.isEmpty()) {
+                WebValidate.ensure(act, it.tokenid, it.webvalidate, adapter::notifyDataSetChanged);
+            }
+
             ((FrameLayout) h.itemView).setForeground(null);
-            // A collection card opens the collection; everything else opens its detail sheet.
-            h.itemView.setOnClickListener(v -> { if (it.collection) openCollection(it); else showDetail(it); });
+            // A collection card drills in; anything else lands straight in the fullscreen viewer,
+            // paging the list exactly as displayed (viewer-first — Details is one tap away inside).
+            h.itemView.setOnClickListener(v -> {
+                if (it.collection) { openCollection(it); return; }
+                NftViewer.open(act, new ArrayList<>(items), items.indexOf(it), viewerHost);
+            });
             h.itemView.setOnLongClickListener(v -> { toggleFav(it.favKey); return true; });
         }
     }

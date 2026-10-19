@@ -28,6 +28,8 @@ public class NodeApi {
     public interface Cb {
         void onResult(JSONObject json);
         void onError(String message);
+        /** The transport cannot establish whether an executing command completed. */
+        default void onUnknown(String message) { onError(message); }
     }
 
     public interface PairingListener {
@@ -82,7 +84,7 @@ public class NodeApi {
             public void response(JSONObject zResponse) {
                 final boolean enabled = zResponse.optBoolean("enabled", false);
                 mMain.post(() -> {
-                    if (dead()) return;
+                    if (isClosed()) return;
                     noteEnabled(enabled);
                 });
             }
@@ -99,6 +101,8 @@ public class NodeApi {
         android.util.Log.d("NFTWallet", "pairing -> " + enabled);
         if (mPairing != null) mPairing.onEnabled(enabled);
     }
+
+    public boolean isClosed() { return mReleased || dead(); }
 
     public boolean isEnabled() { return mEnabled != null && mEnabled; }
 
@@ -145,6 +149,30 @@ public class NodeApi {
     }
 
     public void cmd(String command, long timeoutMs, Cb cb) {
+        mMain.post(() -> cmdOnMain(command, timeoutMs, checked(cb)));
+    }
+
+    /** Reuse the bundled Vestr/Future Cash Boolean-status gate before reporting success. */
+    private static Cb checked(Cb callback) {
+        if (callback == null) return null;
+        return new Cb() {
+            @Override public void onResult(JSONObject result) {
+                if (result == null || !(result.opt("status") instanceof Boolean)) {
+                    String message = result == null ? "Node result unavailable. Outcome unknown."
+                            : result.optString("transporterror", "Node result unavailable. Outcome unknown.");
+                    callback.onUnknown(message);
+                } else if (!result.optBoolean("status", false)) {
+                    callback.onError(result.optString("error", result.optString("message", "Node command failed.")));
+                } else {
+                    callback.onResult(result);
+                }
+            }
+            @Override public void onError(String message) { callback.onError(message); }
+            @Override public void onUnknown(String message) { callback.onUnknown(message); }
+        };
+    }
+
+    private void cmdOnMain(String command, long timeoutMs, Cb cb) {
         // `coins ... own:true` (node core vc81+) filters to the node wallet's OWN addresses so
         // tracked watch-scripts (e.g. minimaWallet's classic addresses) never show here. An older
         // node rejects the unknown parameter — retry once without it (pre-own behaviour).
@@ -169,7 +197,7 @@ public class NodeApi {
     }
 
     private void cmdInner(String command, long timeoutMs, Cb cb) {
-        if (mReleased) {
+        if (isClosed()) {
             // ALWAYS dispatch: a caller that never hears back can wedge forever — BookRepository
             // sets `scanning = true` before calling and only clears it in the callback, so a
             // silent return makes every later refresh() a no-op.
@@ -192,12 +220,12 @@ public class NodeApi {
             // decrement BEFORE the dead() bail-out: leaking this counter permanently pins it
             // above zero, which disables both reRegister() and the unpair detector
             if (isWrite) mPendingWrites--;
-            if (dead()) return;
+            if (isClosed()) return;
             // The "paired-then-node-died" detector: a run of dead-air commands means the node app is gone
             // (rebooted phone, force-stop, crash). Flip to unpaired so the hosts start re-registering.
             // NOT while a write is pending — the node is likely just grinding that write's PoW.
             if (mPendingWrites == 0 && ++mConsecTimeouts >= TIMEOUTS_TO_UNPAIR) noteEnabled(false);
-            if (cb != null) cb.onError("Minima Core didn't respond. Is it installed, running and enabled?");
+            if (cb != null) cb.onUnknown("Minima Core didn't respond. Outcome unknown. Check its status before retrying.");
         };
         ref[0] = timeout;
         mPending.add(timeout);
@@ -207,7 +235,7 @@ public class NodeApi {
             @Override
             public void response(JSONObject zResponse) {
                 mMain.post(() -> {
-                    if (done[0]) return;
+                    if (done[0] || isClosed()) return;
                     done[0] = true;
                     mMain.removeCallbacks(timeout);
                     mPending.remove(timeout);
@@ -216,7 +244,7 @@ public class NodeApi {
                     // (pairing state isn't a view).
                     mLastOkMs = System.currentTimeMillis();
                     mConsecTimeouts = 0;
-                    if (dead()) return;   // cleaned up above; just don't touch dead views
+                    if (isClosed()) return;   // cleaned up above; just don't touch dead views
 
                     // Contain any exception a callback throws (most often JSON parsing of a large/odd reply)
                     // so it can't reach the main Looper and crash the whole app. On failure route to onError
@@ -231,11 +259,11 @@ public class NodeApi {
                         }
                         // A successful command means the node ran it as an enabled app — if we thought we
                         // were unpaired (e.g. the register reply got lost), this is the recovery signal.
-                        noteEnabled(true);
-                        if (isTooLong(zResponse)) { if (cb != null) cb.onError(ERR_TOO_LONG); return; }
+                        if (zResponse.opt("status") instanceof Boolean) noteEnabled(true);
+                        if (isTooLong(zResponse)) { if (cb != null) cb.onUnknown(ERR_TOO_LONG); return; }
                         if (cb != null) cb.onResult(zResponse);
                     } catch (Throwable t) {
-                        if (cb != null) { try { cb.onError("Bad node reply"); } catch (Throwable ignore) {} }
+                        if (cb != null) { try { cb.onUnknown("Bad node reply"); } catch (Throwable ignore) {} }
                     }
                 });
             }

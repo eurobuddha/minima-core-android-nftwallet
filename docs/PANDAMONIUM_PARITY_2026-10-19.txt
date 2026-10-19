@@ -21,3 +21,18 @@ Certificate SHA-256: eca1383c9d27683a281fbe6355356267877dc2dd14d963d7cc289ca0700
 Candidate: dist/nft-wallet-0.1.14-candidate.apk
 SHA-256: 882fa7d96ce1fd1c53c832cdf6da7b90c9edce238aa43219b7f82e729885ef05
 No installation, publication or live transaction. Fold check remains pending.
+
+Node response and lifecycle checkpoint: 0.1.15 / code115
+Reused integrated NFT NodeApi Boolean-status validation, main-thread dispatch,
+and closed-screen guards. Retained the standalone MinimaAPI IPC connector and
+older-node own:true fallback. Null, missing or string statuses cannot reach success;
+timeouts/oversized replies report an unknown outcome. Existing callback clients
+still default unknown to their error handler; transaction journal parity remains open.
+Canonical response/threading regressions adapted to the real standalone connector,
+with additional null-reply and late-reply-after-release cases. Full suite70 tests,
+zero failures/errors/skips. Offline signed build passed; lint0 errors236 warnings.
+Review: changed wrapper, configuration and both test files inspected. This approves
+this bounded port, not the unfinished transaction workflows or whole-app review.
+APK package/version and existing family certificate verified. Candidate:
+dist/nft-wallet-0.1.15-candidate.apk (SHA256 in adjacent sidecar).
+No installation, publication or real node transaction performed.

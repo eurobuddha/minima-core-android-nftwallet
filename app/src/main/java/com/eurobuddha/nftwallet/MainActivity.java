@@ -760,18 +760,14 @@ public class MainActivity extends AppCompatActivity {
         int slack = (int) (2 * getResources().getDisplayMetrics().density);
         int overflow = strip.getWidth() - tabs.getWidth();
         int x = tabs.getScrollX();
-        final int wantLeft = x > slack ? View.VISIBLE : View.GONE;
-        final int wantRight = overflow > slack && x < overflow - slack ? View.VISIBLE : View.GONE;
+        final int wantLeft = x > slack ? View.VISIBLE : View.INVISIBLE;
+        final int wantRight = overflow > slack && x < overflow - slack ? View.VISIBLE : View.INVISIBLE;
         if (wantLeft == lastLeftVis && wantRight == lastRightVis) return;
         lastLeftVis = wantLeft;
         lastRightVis = wantRight;
         left.setVisibility(wantLeft);
         right.setVisibility(wantRight);
-        // These flips happen from a layout-change listener, i.e. DURING a layout pass, where
-        // requestLayout() is swallowed — the chevrons went VISIBLE but were never measured, so they
-        // sat at 0x0 and looked like they had never appeared. Re-request outside the pass.
-        final View row = (View) right.getParent();
-        if (row != null) row.post(row::requestLayout);
+
     }
 
     // ===== StateNFT mint engine driver =====

@@ -125,10 +125,11 @@
             android:text="‹"
             android:textSize="22sp"
             android:gravity="center"
-            android:minWidth="34dp"
+            android:minWidth="48dp"
+            android:minHeight="48dp"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
-            android:visibility="gone" />
+            android:visibility="invisible" />
 
         <com.google.android.material.tabs.TabLayout
             android:id="@+id/tabs"
@@ -149,10 +150,11 @@
             android:text="›"
             android:textSize="22sp"
             android:gravity="center"
-            android:minWidth="34dp"
+            android:minWidth="48dp"
+            android:minHeight="48dp"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
-            android:visibility="gone" />
+            android:visibility="invisible" />
     </LinearLayout>
 
     <androidx.viewpager.widget.ViewPager

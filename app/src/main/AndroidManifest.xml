@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- QR scan of recipient addresses (zxing-embedded CaptureActivity) -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- Finish an in-flight State NFT mint with the app closed. A collection needs ~25-45 block
          ticks; tying that to a live Activity meant closing the app silently parked it. -->

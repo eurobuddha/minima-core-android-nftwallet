@@ -10,8 +10,8 @@ android {
         applicationId "com.eurobuddha.nftwallet"
         minSdk 28
         targetSdk 35
-        versionCode 113
-        versionName "0.1.13"
+        versionCode 114
+        versionName "0.1.14"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -41,6 +41,7 @@ android {
             signingConfig signingConfigs.release
         }
     }
+    testOptions { unitTests.returnDefaultValues = true }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11

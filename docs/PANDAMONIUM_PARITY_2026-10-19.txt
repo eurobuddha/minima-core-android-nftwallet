@@ -1,0 +1,23 @@
+Standalone parity checkpoint: nft-wallet 0.1.14 / code 114
+
+Reused Pandamonium scripts/adapt-pandamonium-token-metadata.py, based on
+MinimaCore balance/tokens/TokenMeta.java. Serialized token/name objects and command
+envelopes resolve human names and artwork URLs without mutating token metadata.
+Standalone has no tokenNameProvided translation bookkeeping; that hook was omitted.
+StateNft collection cover, name, edition size and image paths use the same decoder.
+Tab arrows retain their layout width and no longer request another layout from
+a layout callback. Coin labels use bounded width and ellipsis. Existing optional
+camera and compileSdk constant declarations corrected to pass release lint.
+
+Regression fixtures reused from UtxoTokenNamesTest/NftTokenNamesTest cover large
+embedded images, literal multilingual names, missing names and collection envelopes.
+Full standalone JVM suite: 64 tests, 0 failures/errors/skips.
+Offline signed release build passed; lint: 0 errors, 235 warnings.
+Reviewed every changed source/test/config file. No unresolved issue in this display
+port. This checkpoint is not full application review or final rollout approval.
+APK metadata and family certificate verified:
+package: name='com.eurobuddha.nftwallet' versionCode='114' versionName='0.1.14' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
+Certificate SHA-256: eca1383c9d27683a281fbe6355356267877dc2dd14d963d7cc289ca0700e517f
+Candidate: dist/nft-wallet-0.1.14-candidate.apk
+SHA-256: 882fa7d96ce1fd1c53c832cdf6da7b90c9edce238aa43219b7f82e729885ef05
+No installation, publication or live transaction. Fold check remains pending.

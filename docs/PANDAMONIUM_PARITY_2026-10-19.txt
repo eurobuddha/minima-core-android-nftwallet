@@ -67,3 +67,38 @@ release review remain OPEN. No settlement or reservation rules changed.
 Verdict: Approve scoped source checkpoint. Not installed or published.
 Candidate:dist/nft-wallet-0.1.16-candidate.apk
 SHA256:4ca4ce5276b4e716be071920b4c2c9dbea139e13aa5d6596029859bb062eb4bf
+
+nft-wallet 0.1.17/code117 — saved-history observation parity (2026-10-20)
+Reused scripts/pandamonium-sources/NFTwallet/HistoryChainCheck.java and the
+history-status adapter's row/detail changes, with the catalog's exact English
+text and existing standalone date formatting. Saved node rows say Saved; opening
+a detail performs a fresh read-only txpow onchain query. Missing/malformed replies
+say Outcome unverified. Typed absence is Not found on this node, not failure.
+An accepted observation includes node-reported depth and a check timestamp.
+
+UTXO retains its existing TransactionEvidence parser, with observedInclusion
+extracted exactly as the donor and the three-block settlement gate preserved.
+Its existing rejection of pending replies remains. NFT has no standalone
+TransactionEvidence/LocalHistory yet: reused only observedInclusion/whole and the
+small ID gate inside HistoryChainCheck; no host journal or private store imported.
+No artificial local-receipt UI was added to NFT. Both display boundaries additionally
+reuse the strict 32-byte block-ID rule from SweepPending and reject pending replies.
+No database mutations, receipt deletion, replay, reservation release or key changes.
+
+Validation: all five applicable view regressions failed before wiring (UTXO3,NFT2).
+Copied helper/parser regressions use actual standalone labels; added pending/short
+block proof cases. UTXO tests explicitly retain depth>=3 settlement while allowing
+valid depth0..2 observations. 94debug+94release tests pass; no failures,
+errors or skips. Signed offline build/lint pass:0errors,241warnings.
+APK package/version, family certificate and ZIP verified. No device/live node used.
+
+Code Review
+Summary: reviewed changed views/helper/parser/configuration and complete tests,
+including callback ownership, fresh checks, exact IDs, numeric consistency,
+malformed/offline cases and unchanged UTXO settlement semantics.
+Findings: no new blocking issue in this read-only display adaptation. A check is a
+timestamped observation from the connected node, not a perpetual confirmation or
+independent chain validation. Broader form/controller/journal parity remains OPEN.
+Verdict: Approve scoped checkpoint. Not installed or published.
+Candidate:dist/nft-wallet-0.1.17-candidate.apk
+SHA256:140000f057dbc3694b7819ecac2cbccdbde26c09b8ae78ebd9690cfd34ad0685

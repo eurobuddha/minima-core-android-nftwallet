@@ -283,7 +283,7 @@ public class HistoryView extends BaseView {
         row.addView(mid);
 
         TextView right = new TextView(act);
-        right.setText("#" + n.block); right.setTextColor(Design.dim()); right.setTextSize(11f); right.setGravity(Gravity.END);
+        right.setText("Saved\n#" + n.block); right.setTextColor(Design.dim()); right.setTextSize(11f); right.setGravity(Gravity.END);
         row.addView(right);
 
         row.setOnClickListener(v -> showDetail(n));
@@ -297,7 +297,8 @@ public class HistoryView extends BaseView {
         box.setOrientation(LinearLayout.VERTICAL);
         kv(box, "Direction", n.direction);
         kv(box, "Amount", (n.incoming ? "+" : "sent".equals(n.direction) ? "−" : "") + Util.tidyAmount(n.amount) + " " + n.tokenName);
-        kv(box, "Block", String.valueOf(n.block));
+        kv(box, "Recorded block", String.valueOf(n.block));
+        HistoryChainCheck.show(act,box,n.txpowid);
         kv(box, "Time", new SimpleDateFormat("dd MMM yyyy  HH:mm:ss", Locale.ENGLISH).format(new Date(n.timemilli)));
         copyRow(box, "Txpow id", n.txpowid);
         if (n.counterparty != null && !n.counterparty.isEmpty()) {

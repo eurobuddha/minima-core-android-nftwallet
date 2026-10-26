@@ -56,7 +56,7 @@ public class MintService extends Service {
         receiver = new BroadcastReceiver() {
             @Override public void onReceive(Context c, Intent intent) {
                 if (!MinimaAPI.checkMinimaID(MintService.this, intent)) return;
-                String data = intent.getStringExtra(MinimaAPIMessages.MINIMA_API_NOTIFY_DATA);
+                String data = MinimaAPI.notifyData(intent);
                 if (data == null) return;
                 try {
                     String event = new JSONObject(data).optString("event", "");
@@ -65,7 +65,7 @@ public class MintService extends Service {
             }
         };
         ContextCompat.registerReceiver(this, receiver,
-                new IntentFilter(MinimaAPIMessages.MINIMA_API_NOTIFY), ContextCompat.RECEIVER_EXPORTED);
+                MinimaAPI.notifyFilter(), ContextCompat.RECEIVER_EXPORTED);
 
         HeartbeatReceiver.schedule(this);
         updateFg(stateText());
